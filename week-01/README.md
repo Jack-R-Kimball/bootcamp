@@ -15,7 +15,7 @@ cd week-01
 npm install
 npm run dev
 ```
-Then open [http://localhost:4000](http://localhost:4000) in your browser.
+Then open [http://localhost:4321](http://localhost:4321) in your browser.
 
 To use as your new tab page, install a browser extension like **New Tab Redirect** (Firefox/Chrome) and point it to `http://localhost:4000`. The dev server must be running.
 
