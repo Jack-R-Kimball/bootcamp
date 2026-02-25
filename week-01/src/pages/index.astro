@@ -106,6 +106,22 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       border-bottom: 1px solid var(--border);
     }
 
+    /* ── Clock ──────────────────────────────────────────── */
+    .clock { display: flex; flex-direction: column; align-items: center; line-height: 1.25; }
+    .clock-time {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .clock-date {
+      font-size: 0.625rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
     /* ── Theme toggle ────────────────────────────────────── */
     .theme-toggle { display: flex; gap: 0.125rem; }
     .theme-toggle button {
@@ -169,6 +185,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     .panel-actions { display: flex; align-items: center; }
     .panel-add-btn { font-size: 0.6875rem; color: var(--muted); }
     .panel-add-btn:hover { color: var(--link); }
+    .panel-drag-grip { font-size: 0.55rem; padding: 0 0.15rem; }
 
     /* ── Action bar ─────────────────────────────────────── */
     .action-bar { margin-bottom: 1rem; }
@@ -385,6 +402,10 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
   <div class="container">
     <div class="header">
       <h1>Dashboard</h1>
+      <div x-data="clock" class="clock">
+        <span class="clock-time" x-text="time"></span>
+        <span class="clock-date" x-text="date"></span>
+      </div>
       <div x-data="themeToggle" class="theme-toggle">
         <button @click="set('light')" :class="{ active: mode === 'light' }">light</button>
         <button @click="set('system')" :class="{ active: mode === 'system' }">auto</button>
@@ -400,6 +421,20 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     import Sortable from 'sortablejs';
 
     window.Alpine = Alpine;
+
+    Alpine.data('clock', () => ({
+      time: '',
+      date: '',
+      init() {
+        this.tick();
+        setInterval(() => this.tick(), 1000);
+      },
+      tick() {
+        const now = new Date();
+        this.time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        this.date = now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      },
+    }));
 
     Alpine.data('themeToggle', () => ({
       mode: localStorage.getItem('theme') || 'system',
@@ -427,6 +462,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       if (t) { _mx = t.clientX; _my = t.clientY; }
     }, { passive: true });
 
+    let _panelSortable    = null;
     let _catSortable      = null;
     let _linkSortables    = [];
     let _dragPoll         = null;
@@ -603,6 +639,24 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     }
 
     function initSortable() {
+      if (_panelSortable) { _panelSortable.destroy(); _panelSortable = null; }
+      const panelTabsEl = document.querySelector('.panel-tabs');
+      if (panelTabsEl) {
+        _panelSortable = Sortable.create(panelTabsEl, {
+          handle: '.panel-drag-grip',
+          animation: 150,
+          onEnd() {
+            const ids = [...panelTabsEl.querySelectorAll(':scope > .panel-tab')]
+              .map(el => Number(el.dataset.id));
+            fetch('/api/panels/reorder', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids }),
+            });
+          },
+        });
+      }
+
       if (_catSortable) { _catSortable.destroy(); _catSortable = null; }
       _linkSortables.forEach(s => { try { s.destroy(); } catch {} });
       _linkSortables = [];

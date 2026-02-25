@@ -33,6 +33,9 @@ db.exec(`
 
 // ── Migrations ────────────────────────────────────────────────────────────────
 try {
+  db.exec(`ALTER TABLE panels ADD COLUMN position INTEGER DEFAULT 0`);
+} catch { /* already exists */ }
+try {
   db.exec(`ALTER TABLE categories ADD COLUMN panel_id INTEGER REFERENCES panels(id) ON DELETE CASCADE`);
 } catch { /* already exists */ }
 try {
@@ -57,7 +60,12 @@ seedDefault();
 
 // ── Panels ────────────────────────────────────────────────────────────────────
 export function getPanels() {
-  return db.prepare('SELECT * FROM panels ORDER BY id').all();
+  return db.prepare('SELECT * FROM panels ORDER BY position, id').all();
+}
+
+export function reorderPanels(ids) {
+  const stmt = db.prepare('UPDATE panels SET position = ? WHERE id = ?');
+  db.transaction(() => ids.forEach((id, i) => stmt.run(i, id)))();
 }
 
 export function createPanel(name) {

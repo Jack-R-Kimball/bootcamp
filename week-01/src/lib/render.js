@@ -96,7 +96,8 @@ function renderPanelTab(panel, totalPanels) {
   // Use Alpine :class binding so the active state updates reactively on click.
   // Static server-rendered classes would not update when Alpine's `active` changes.
   return `
-    <div class="panel-tab" :class="{ 'panel-tab--active': active === ${panel.id} }">
+    <div class="panel-tab" data-id="${panel.id}" :class="{ 'panel-tab--active': active === ${panel.id} }">
+      <span class="drag-handle panel-drag-grip">⠿</span>
       <button class="panel-tab__btn"
         hx-get="/api/categories?panel_id=${panel.id}"
         hx-target="#categories"
@@ -122,12 +123,12 @@ function renderPanelBar(panels, activePanelId) {
         ${panels.map(p => renderPanelTab(p, panels.length)).join('')}
       </div>
       <div class="panel-actions" x-data="{ adding: false }">
-        <button x-show="!adding" @click="adding = true" class="btn-ghost panel-add-btn">+ panel</button>
+        <button x-show="!adding" @click="adding = true; $nextTick(() => $refs.panelName.focus())" class="btn-ghost panel-add-btn">+ panel</button>
         <form x-show="adding" x-cloak class="inline-form"
           hx-post="/api/panels"
           hx-target="#main"
           hx-swap="innerHTML">
-          <input name="name" placeholder="panel name" required>
+          <input x-ref="panelName" name="name" placeholder="panel name" required>
           <button type="submit" class="btn-primary">create</button>
           <button type="button" class="btn-ghost" @click="adding = false">cancel</button>
         </form>
