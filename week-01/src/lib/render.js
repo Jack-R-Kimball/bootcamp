@@ -8,11 +8,14 @@ function esc(v) {
 
 function renderLink(link, panelId) {
   return `
-    <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ editing: false }">
-      <div x-show="!editing" class="link-row">
+    <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ editing: false, menu: false }" @click.outside="menu = false">
+      <div x-show="!editing" class="link-row" @contextmenu.prevent="menu = !menu">
         <span class="drag-handle link-drag-handle">⠿</span>
-        <a href="${esc(link.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
-        <span class="link-actions">
+        <div class="link-info">
+          <a href="${esc(link.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
+          ${link.description ? `<span class="link-desc">${esc(link.description)}</span>` : ''}
+        </div>
+        <span class="link-actions" x-show="menu" x-cloak @mouseleave="menu = false" @click="menu = false">
           <button class="btn-action" @click="editing = true">edit</button>
           <button class="btn-action del"
             hx-delete="/api/links/${link.id}?panel_id=${panelId}"
@@ -28,6 +31,7 @@ function renderLink(link, panelId) {
         <input type="hidden" name="panel_id" value="${panelId}">
         <input name="name" value="${esc(link.name)}" required>
         <input name="url" value="${esc(link.url)}" required>
+        <input name="description" value="${esc(link.description ?? '')}" placeholder="Description (optional)">
         <button type="submit" class="btn-primary">save</button>
         <button type="button" class="btn-ghost" @click="editing = false">cancel</button>
       </form>
@@ -71,6 +75,7 @@ function renderCategory(cat, panelId) {
           <input type="hidden" name="panel_id" value="${panelId}">
           <input name="name" placeholder="Name" required>
           <input name="url" placeholder="https://" required>
+          <input name="description" placeholder="Description (optional)">
           <button type="submit" class="btn-primary">add</button>
           <button type="button" class="btn-ghost" @click="open = false">cancel</button>
         </form>

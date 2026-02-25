@@ -8,8 +8,9 @@ export async function POST({ request }) {
   const url  = data.get('url')?.trim();
   if (!category_id || !name || !url) return new Response('Missing fields', { status: 400 });
 
+  const description = data.get('description')?.trim() || null;
   const panelId = Number(data.get('panel_id')) || getPanelIdForCategory(category_id);
-  createLink(category_id, name, url);
+  createLink(category_id, name, url, description);
   return new Response(renderCategories(getCategories(panelId), panelId), {
     headers: { 'Content-Type': 'text/html' },
   });

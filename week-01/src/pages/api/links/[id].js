@@ -11,8 +11,9 @@ export async function PUT({ request, params }) {
   const url  = data.get('url')?.trim();
   if (!name || !url) return new Response('Missing fields', { status: 400 });
 
+  const description = data.get('description')?.trim() || null;
   const panelId = Number(data.get('panel_id')) || getPanelIdForLink(linkId);
-  updateLink(linkId, name, url);
+  updateLink(linkId, name, url, description);
   return html(getCategories(panelId), panelId);
 }
 

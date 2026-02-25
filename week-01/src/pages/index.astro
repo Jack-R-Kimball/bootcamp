@@ -13,21 +13,73 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard</title>
+  <script is:inline>
+    (function () {
+      var t = localStorage.getItem('theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
   <style is:global>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:       #0d1117;
-      --surface:  #161b22;
-      --surface2: #21262d;
-      --border:   #30363d;
-      --text:     #e6edf3;
-      --muted:    #7d8590;
-      --link:     #58a6ff;
-      --link-hv:  #79c0ff;
-      --accent:   #f78166;
-      --danger:   #f85149;
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #7d8590;
+      --link:      #58a6ff;
+      --link-hv:   #79c0ff;
+      --accent:    #f78166;
+      --accent-hv: #e8705a;
+      --danger:    #f85149;
       --r: 4px;
+    }
+
+    /* System preference: light */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:        #f6f8fa;
+        --surface:   #ffffff;
+        --surface2:  #eaeef2;
+        --border:    #d0d7de;
+        --text:      #1f2328;
+        --muted:     #656d76;
+        --link:      #0969da;
+        --link-hv:   #0550ae;
+        --accent:    #c0392b;
+        --accent-hv: #a93226;
+        --danger:    #cf222e;
+      }
+    }
+
+    /* Explicit overrides — win over media query */
+    html[data-theme="dark"] {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --text:      #e6edf3;
+      --muted:     #7d8590;
+      --link:      #58a6ff;
+      --link-hv:   #79c0ff;
+      --accent:    #f78166;
+      --accent-hv: #e8705a;
+      --danger:    #f85149;
+    }
+    html[data-theme="light"] {
+      --bg:        #f6f8fa;
+      --surface:   #ffffff;
+      --surface2:  #eaeef2;
+      --border:    #d0d7de;
+      --text:      #1f2328;
+      --muted:     #656d76;
+      --link:      #0969da;
+      --link-hv:   #0550ae;
+      --accent:    #c0392b;
+      --accent-hv: #a93226;
+      --danger:    #cf222e;
     }
 
     [x-cloak] { display: none !important; }
@@ -48,10 +100,23 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     .header {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       margin-bottom: 1.25rem;
       padding-bottom: 0.875rem;
       border-bottom: 1px solid var(--border);
     }
+
+    /* ── Theme toggle ────────────────────────────────────── */
+    .theme-toggle { display: flex; gap: 0.125rem; }
+    .theme-toggle button {
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0.15rem 0.4rem;
+    }
+    .theme-toggle button:hover { color: var(--text); background: var(--surface2); }
+    .theme-toggle button.active { color: var(--accent); }
     .header h1 {
       font-size: 0.6875rem;
       font-weight: 700;
@@ -150,18 +215,43 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       padding: 0.2rem 0.75rem;
       gap: 0.5rem;
     }
+    .link-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
     .link-name {
       color: var(--link);
       text-decoration: none;
       font-size: 0.8125rem;
-      flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .link-name:hover { color: var(--link-hv); text-decoration: underline; }
-    .link-actions { display: none; gap: 0.125rem; flex-shrink: 0; }
-    .link-item:hover .link-actions { display: flex; }
+    .link-desc {
+      display: none;
+      font-size: 0.6875rem;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+    .link-item:hover .link-desc { display: block; }
+    .link-actions {
+      position: absolute;
+      right: 0.5rem;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      gap: 0.125rem;
+      align-items: center;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 0.125rem 0.25rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      z-index: 10;
+    }
 
     /* ── Add link section ───────────────────────────────── */
     .add-link {
@@ -252,8 +342,9 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       border-color: var(--accent);
       box-shadow: 0 0 0 2px rgba(247,129,102,0.15);
     }
-    .inline-form input[name="name"]         { width: 120px; }
-    .inline-form input[name="url"]          { width: 185px; }
+    .inline-form input[name="name"]        { width: 120px; }
+    .inline-form input[name="url"]         { width: 185px; }
+    .inline-form input[name="description"] { width: 185px; }
 
     /* ── Buttons ────────────────────────────────────────── */
     button {
@@ -267,7 +358,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       line-height: 1.5;
     }
     .btn-primary { background: var(--accent); color: #fff; font-weight: 700; letter-spacing: 0.03em; }
-    .btn-primary:hover { background: #e8705a; }
+    .btn-primary:hover { background: var(--accent-hv); }
     .btn-ghost { color: var(--muted); }
     .btn-ghost:hover { background: var(--surface2); color: var(--text); }
     .btn-danger { color: var(--danger); padding: 0.1rem 0.375rem; }
@@ -275,12 +366,30 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     .btn-action { color: var(--muted); }
     .btn-action:hover { background: var(--surface2); color: var(--text); }
     .btn-action.del:hover { color: var(--danger); background: rgba(248,81,73,0.1); }
+
+    /* ── Touch / mobile: hover-only elements become always-on ───────────── */
+    @media (hover: none) {
+      .link-desc { display: block; }
+    }
+
+    /* ── Small screen layout ────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      body { padding: 1rem 0.75rem; }
+      .inline-form { flex-direction: column; align-items: stretch; }
+      .inline-form input { width: 100% !important; }
+      .inline-form button { align-self: flex-start; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <h1>Dashboard</h1>
+      <div x-data="themeToggle" class="theme-toggle">
+        <button @click="set('light')" :class="{ active: mode === 'light' }">light</button>
+        <button @click="set('system')" :class="{ active: mode === 'system' }">auto</button>
+        <button @click="set('dark')"  :class="{ active: mode === 'dark'  }">dark</button>
+      </div>
     </div>
     <div id="main" set:html={renderMain(panels, activePanel?.id, categories)}></div>
   </div>
@@ -291,6 +400,21 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     import Sortable from 'sortablejs';
 
     window.Alpine = Alpine;
+
+    Alpine.data('themeToggle', () => ({
+      mode: localStorage.getItem('theme') || 'system',
+      set(m) {
+        this.mode = m;
+        if (m === 'system') {
+          localStorage.removeItem('theme');
+          document.documentElement.removeAttribute('data-theme');
+        } else {
+          localStorage.setItem('theme', m);
+          document.documentElement.setAttribute('data-theme', m);
+        }
+      },
+    }));
+
     Alpine.start();
 
     // Track mouse position with a listener registered at page-load, BEFORE
@@ -298,6 +422,10 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     // drags regardless of what SortableJS does with later mousemove listeners.
     let _mx = 0, _my = 0;
     document.addEventListener('mousemove', e => { _mx = e.clientX; _my = e.clientY; });
+    document.addEventListener('touchmove', e => {
+      const t = e.touches[0];
+      if (t) { _mx = t.clientX; _my = t.clientY; }
+    }, { passive: true });
 
     let _catSortable      = null;
     let _linkSortables    = [];

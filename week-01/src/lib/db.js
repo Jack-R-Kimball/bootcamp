@@ -41,6 +41,9 @@ try {
 try {
   db.exec(`ALTER TABLE links ADD COLUMN position INTEGER DEFAULT 0`);
 } catch { /* already exists */ }
+try {
+  db.exec(`ALTER TABLE links ADD COLUMN description TEXT`);
+} catch { /* already exists */ }
 
 // ── Seed default panel if none exists ─────────────────────────────────────────
 const seedDefault = db.transaction(() => {
@@ -98,11 +101,11 @@ export function getPanelIdForLink(linkId) {
   ).get(linkId)?.panel_id ?? null;
 }
 
-export const createLink = (category_id, name, url) =>
-  db.prepare('INSERT INTO links (category_id, name, url) VALUES (?, ?, ?)').run(category_id, name, url);
+export const createLink = (category_id, name, url, description = null) =>
+  db.prepare('INSERT INTO links (category_id, name, url, description) VALUES (?, ?, ?, ?)').run(category_id, name, url, description);
 
-export const updateLink = (id, name, url) =>
-  db.prepare('UPDATE links SET name = ?, url = ? WHERE id = ?').run(name, url, id);
+export const updateLink = (id, name, url, description = null) =>
+  db.prepare('UPDATE links SET name = ?, url = ?, description = ? WHERE id = ?').run(name, url, description, id);
 
 export const deleteLink = (id) =>
   db.prepare('DELETE FROM links WHERE id = ?').run(id);
