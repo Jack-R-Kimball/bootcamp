@@ -1,5 +1,5 @@
-import { createPanel, getPanels } from '../../lib/db.js';
-import { renderMain } from '../../lib/render.js';
+import { createPanel, getPanels } from '../../../lib/db.js';
+import { renderMain } from '../../../lib/render.js';
 
 export async function POST({ request }) {
   const data = await request.formData();
