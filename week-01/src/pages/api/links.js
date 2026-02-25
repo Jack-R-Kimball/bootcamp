@@ -1,4 +1,4 @@
-import { createLink, getCategories } from '../../lib/db.js';
+import { createLink, getCategories, getPanelIdForCategory } from '../../lib/db.js';
 import { renderCategories } from '../../lib/render.js';
 
 export async function POST({ request }) {
@@ -8,8 +8,9 @@ export async function POST({ request }) {
   const url  = data.get('url')?.trim();
   if (!category_id || !name || !url) return new Response('Missing fields', { status: 400 });
 
+  const panelId = Number(data.get('panel_id')) || getPanelIdForCategory(category_id);
   createLink(category_id, name, url);
-  return new Response(renderCategories(getCategories()), {
+  return new Response(renderCategories(getCategories(panelId), panelId), {
     headers: { 'Content-Type': 'text/html' },
   });
 }

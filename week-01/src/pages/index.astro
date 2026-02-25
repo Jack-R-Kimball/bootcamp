@@ -1,8 +1,10 @@
 ---
-import { getCategories } from '../lib/db.js';
-import { renderCategories } from '../lib/render.js';
+import { getPanels, getCategories } from '../lib/db.js';
+import { renderMain } from '../lib/render.js';
 
-const categories = getCategories();
+const panels = getPanels();
+const activePanel = panels[0];
+const categories = activePanel ? getCategories(activePanel.id) : [];
 ---
 
 <!DOCTYPE html>
@@ -46,11 +48,9 @@ const categories = getCategories();
     .header {
       display: flex;
       align-items: center;
-      gap: 1rem;
       margin-bottom: 1.25rem;
       padding-bottom: 0.875rem;
       border-bottom: 1px solid var(--border);
-      flex-wrap: wrap;
     }
     .header h1 {
       font-size: 0.6875rem;
@@ -59,6 +59,54 @@ const categories = getCategories();
       text-transform: uppercase;
       color: var(--accent);
     }
+
+    /* ── Panel bar ──────────────────────────────────────── */
+    .panel-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.875rem;
+      flex-wrap: wrap;
+    }
+    .panel-tabs {
+      display: flex;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+    .panel-tab {
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .panel-tab--active {
+      border-color: var(--accent);
+      background: var(--surface2);
+    }
+    .panel-tab__btn {
+      padding: 0.25rem 0.625rem;
+      color: var(--muted);
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-radius: 0;
+    }
+    .panel-tab__btn:hover { color: var(--text); background: var(--surface2); }
+    .panel-tab--active .panel-tab__btn { color: var(--accent); }
+    .panel-tab__del {
+      padding: 0.125rem 0.3rem;
+      font-size: 0.75rem;
+      border-left: 1px solid var(--border);
+      border-radius: 0;
+    }
+    .panel-actions { display: flex; align-items: center; }
+    .panel-add-btn { font-size: 0.6875rem; color: var(--muted); }
+    .panel-add-btn:hover { color: var(--link); }
+
+    /* ── Action bar ─────────────────────────────────────── */
+    .action-bar { margin-bottom: 1rem; }
 
     /* ── Categories grid ────────────────────────────────── */
     #categories {
@@ -157,7 +205,6 @@ const categories = getCategories();
     }
     .inline-form input[name="name"]         { width: 120px; }
     .inline-form input[name="url"]          { width: 185px; }
-    .header .inline-form input[name="name"] { width: 180px; }
 
     /* ── Buttons ────────────────────────────────────────── */
     button {
@@ -170,12 +217,7 @@ const categories = getCategories();
       padding: 0.2rem 0.5rem;
       line-height: 1.5;
     }
-    .btn-primary {
-      background: var(--accent);
-      color: #fff;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-    }
+    .btn-primary { background: var(--accent); color: #fff; font-weight: 700; letter-spacing: 0.03em; }
     .btn-primary:hover { background: #e8705a; }
     .btn-ghost { color: var(--muted); }
     .btn-ghost:hover { background: var(--surface2); color: var(--text); }
@@ -190,20 +232,8 @@ const categories = getCategories();
   <div class="container">
     <div class="header">
       <h1>Dashboard</h1>
-      <div x-data="{ adding: false }">
-        <button x-show="!adding" @click="adding = true" class="btn-primary">+ category</button>
-        <form x-show="adding" x-cloak class="inline-form"
-          hx-post="/api/categories"
-          hx-target="#categories"
-          hx-swap="innerHTML">
-          <input name="name" placeholder="category name" required>
-          <button type="submit" class="btn-primary">create</button>
-          <button type="button" class="btn-ghost" @click="adding = false">cancel</button>
-        </form>
-      </div>
     </div>
-
-    <div id="categories" set:html={renderCategories(categories)}></div>
+    <div id="main" set:html={renderMain(panels, activePanel?.id, categories)}></div>
   </div>
 
   <script>
