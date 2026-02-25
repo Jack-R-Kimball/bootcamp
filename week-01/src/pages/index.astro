@@ -180,6 +180,11 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     /* ── Edit form ──────────────────────────────────────── */
     .edit-form { padding: 0.375rem 0.75rem; }
 
+    /* ── Category rename ────────────────────────────────── */
+    .cat-actions { display: flex; align-items: center; gap: 0.125rem; }
+    .cat-rename-form { flex: 1; }
+    .cat-rename-form input[name="name"] { width: auto; flex: 1; min-width: 60px; }
+
     /* ── Inline forms ───────────────────────────────────── */
     .inline-form {
       display: flex;
@@ -241,6 +246,16 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     import 'htmx.org';
     window.Alpine = Alpine;
     Alpine.start();
+
+    document.addEventListener('htmx:afterSwap', (evt) => {
+      if (evt.target.id === 'categories') {
+        const ab = document.querySelector('.action-bar');
+        if (ab) {
+          Alpine.$data(ab).adding = false;
+          ab.querySelector('form')?.reset();
+        }
+      }
+    });
   </script>
 </body>
 </html>

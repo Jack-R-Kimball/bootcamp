@@ -75,6 +75,10 @@ export function createCategory(name, panelId) {
   return db.prepare('INSERT INTO categories (name, panel_id) VALUES (?, ?)').run(name, panelId);
 }
 
+export function updateCategory(id, name) {
+  return db.prepare('UPDATE categories SET name = ? WHERE id = ?').run(name, id);
+}
+
 export function deleteCategory(id) {
   return db.prepare('DELETE FROM categories WHERE id = ?').run(id);
 }

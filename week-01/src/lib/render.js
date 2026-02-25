@@ -36,13 +36,25 @@ function renderLink(link, panelId) {
 function renderCategory(cat, panelId) {
   return `
     <div class="category" id="cat-${cat.id}">
-      <div class="category-header">
-        <h2 class="category-title">${esc(cat.name)}</h2>
-        <button class="btn-danger"
-          hx-delete="/api/categories/${cat.id}?panel_id=${panelId}"
+      <div class="category-header" x-data="{ renaming: false }">
+        <h2 class="category-title" x-show="!renaming">${esc(cat.name)}</h2>
+        <form x-show="renaming" x-cloak class="inline-form cat-rename-form"
+          hx-put="/api/categories/${cat.id}"
           hx-target="#categories"
-          hx-swap="innerHTML"
-          hx-confirm="Delete '${esc(cat.name)}' and all its links?">&times;</button>
+          hx-swap="innerHTML">
+          <input type="hidden" name="panel_id" value="${panelId}">
+          <input name="name" value="${esc(cat.name)}" required>
+          <button type="submit" class="btn-primary">save</button>
+          <button type="button" class="btn-ghost" @click="renaming = false">cancel</button>
+        </form>
+        <div class="cat-actions" x-show="!renaming">
+          <button class="btn-action" @click="renaming = true">rename</button>
+          <button class="btn-danger"
+            hx-delete="/api/categories/${cat.id}?panel_id=${panelId}"
+            hx-target="#categories"
+            hx-swap="innerHTML"
+            hx-confirm="Delete '${esc(cat.name)}' and all its links?">&times;</button>
+        </div>
       </div>
       <div class="links-list">
         ${cat.links.map(l => renderLink(l, panelId)).join('')}
@@ -73,9 +85,11 @@ export function renderCategories(categories, panelId) {
 
 // ── Panel rendering ───────────────────────────────────────────────────────────
 
-function renderPanelTab(panel, isActive, totalPanels) {
+function renderPanelTab(panel, totalPanels) {
+  // Use Alpine :class binding so the active state updates reactively on click.
+  // Static server-rendered classes would not update when Alpine's `active` changes.
   return `
-    <div class="panel-tab${isActive ? ' panel-tab--active' : ''}">
+    <div class="panel-tab" :class="{ 'panel-tab--active': active === ${panel.id} }">
       <button class="panel-tab__btn"
         hx-get="/api/categories?panel_id=${panel.id}"
         hx-target="#categories"
@@ -96,9 +110,9 @@ function renderPanelTab(panel, isActive, totalPanels) {
 function renderPanelBar(panels, activePanelId) {
   return `
     <div class="panel-bar" x-data="{ active: ${activePanelId || 0} }">
-      <input type="hidden" id="active-panel" :value="active">
+      <input type="hidden" id="active-panel" name="panel_id" :value="active">
       <div class="panel-tabs">
-        ${panels.map(p => renderPanelTab(p, p.id === activePanelId, panels.length)).join('')}
+        ${panels.map(p => renderPanelTab(p, panels.length)).join('')}
       </div>
       <div class="panel-actions" x-data="{ adding: false }">
         <button x-show="!adding" @click="adding = true" class="btn-ghost panel-add-btn">+ panel</button>
