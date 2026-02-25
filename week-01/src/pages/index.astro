@@ -123,6 +123,15 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     }
 
     /* ── Theme toggle ────────────────────────────────────── */
+    .header-actions { display: flex; align-items: center; gap: 0.75rem; }
+    .import-link {
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .import-link:hover { color: var(--link); }
     .theme-toggle { display: flex; gap: 0.125rem; }
     .theme-toggle button {
       font-size: 0.6rem;
@@ -406,10 +415,13 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
         <span class="clock-time" x-text="time"></span>
         <span class="clock-date" x-text="date"></span>
       </div>
-      <div x-data="themeToggle" class="theme-toggle">
+      <div class="header-actions">
+        <a href="/import" class="import-link">import</a>
+        <div x-data="themeToggle" class="theme-toggle">
         <button @click="set('light')" :class="{ active: mode === 'light' }">light</button>
         <button @click="set('system')" :class="{ active: mode === 'system' }">auto</button>
         <button @click="set('dark')"  :class="{ active: mode === 'dark'  }">dark</button>
+        </div>
       </div>
     </div>
     <div id="main" set:html={renderMain(panels, activePanel?.id, categories)}></div>

@@ -1,0 +1,614 @@
+---
+import { getPanels, getCategories } from '../lib/db.js';
+
+const panels = getPanels();
+const panelData = panels.map(p => ({
+  id: p.id,
+  name: p.name,
+  categories: getCategories(p.id).map(c => ({ id: c.id, name: c.name })),
+}));
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import Bookmarks — Dashboard</title>
+  <script is:inline>
+    (function () {
+      var t = localStorage.getItem('theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+      --border: #30363d; --text: #e6edf3; --muted: #7d8590;
+      --link: #58a6ff; --link-hv: #79c0ff; --accent: #f78166;
+      --accent-hv: #e8705a; --danger: #f85149; --r: 4px;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f8fa; --surface: #ffffff; --surface2: #eaeef2;
+        --border: #d0d7de; --text: #1f2328; --muted: #656d76;
+        --link: #0969da; --link-hv: #0550ae; --accent: #c0392b;
+        --accent-hv: #a93226; --danger: #cf222e;
+      }
+    }
+    html[data-theme="dark"] {
+      --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+      --border: #30363d; --text: #e6edf3; --muted: #7d8590;
+      --link: #58a6ff; --link-hv: #79c0ff; --accent: #f78166;
+      --accent-hv: #e8705a; --danger: #f85149;
+    }
+    html[data-theme="light"] {
+      --bg: #f6f8fa; --surface: #ffffff; --surface2: #eaeef2;
+      --border: #d0d7de; --text: #1f2328; --muted: #656d76;
+      --link: #0969da; --link-hv: #0550ae; --accent: #c0392b;
+      --accent-hv: #a93226; --danger: #cf222e;
+    }
+
+    body {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, monospace;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.25rem; }
+
+    /* ── Header ── */
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.875rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .back-link { color: var(--muted); text-decoration: none; font-size: 0.75rem; }
+    .back-link:hover { color: var(--link); }
+    .page-title {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--r);
+      padding: 2rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 1.5rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--link); background: rgba(88,166,255,0.05); }
+    .drop-zone p { color: var(--muted); margin-bottom: 0.375rem; }
+    .drop-zone .hint { font-size: 0.6875rem; }
+    .drop-zone input[type="file"] { display: none; }
+    .drop-zone .choose-btn {
+      display: inline-block;
+      margin-top: 0.75rem;
+      padding: 0.25rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      color: var(--muted);
+      font-size: 0.6875rem;
+      font-family: inherit;
+      cursor: pointer;
+      background: none;
+    }
+    .drop-zone .choose-btn:hover { border-color: var(--link); color: var(--link); }
+
+    /* ── Import layout ── */
+    .import-layout {
+      display: grid;
+      grid-template-columns: 1fr 240px;
+      gap: 1rem;
+      align-items: start;
+    }
+
+    /* ── Tree panel ── */
+    .tree-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+    .tree-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .tree-toolbar .tally { color: var(--muted); font-size: 0.6875rem; margin-left: auto; }
+    .tree-scroll { max-height: 68vh; overflow-y: auto; padding: 0.375rem 0; }
+
+    /* ── Folders ── */
+    .bf-folder-header {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.25rem 0.75rem;
+    }
+    .bf-folder-header:hover { background: var(--surface2); }
+    .bf-toggle {
+      font-size: 0.6rem;
+      color: var(--muted);
+      cursor: pointer;
+      width: 0.75rem;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .bf-folder-name {
+      font-weight: 700;
+      font-size: 0.75rem;
+      cursor: pointer;
+      flex: 1;
+    }
+    .bf-folder-name:hover { color: var(--link); }
+    .bf-children { padding-left: 1.25rem; }
+    .bf-children.collapsed { display: none; }
+
+    /* ── Links ── */
+    .bf-link {
+      display: flex;
+      align-items: baseline;
+      gap: 0.375rem;
+      padding: 0.15rem 0.75rem;
+      cursor: pointer;
+    }
+    .bf-link:hover { background: var(--surface2); }
+    .bf-link-name {
+      color: var(--link);
+      font-size: 0.8125rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 280px;
+    }
+    .bf-link-url {
+      color: var(--muted);
+      font-size: 0.625rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+
+    .bf-cb { flex-shrink: 0; cursor: pointer; accent-color: var(--accent); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 0.875rem;
+      position: sticky;
+      top: 1rem;
+    }
+    .sidebar-title {
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    .field { margin-bottom: 0.625rem; }
+    .field label {
+      display: block;
+      font-size: 0.6rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.2rem;
+    }
+    .field select {
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 0.25rem 0.4rem;
+      font-family: inherit;
+      font-size: 0.8125rem;
+    }
+    .field select:focus { outline: none; border-color: var(--accent); }
+    .sel-count { font-size: 0.75rem; color: var(--muted); margin: 0.625rem 0; }
+    .sel-count strong { color: var(--text); }
+    .import-btn {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      border: none;
+      border-radius: var(--r);
+      padding: 0.375rem 0.75rem;
+      cursor: pointer;
+    }
+    .import-btn:hover:not(:disabled) { background: var(--accent-hv); }
+    .import-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .result {
+      margin-top: 0.75rem;
+      padding: 0.5rem 0.625rem;
+      border-radius: var(--r);
+      font-size: 0.75rem;
+    }
+    .result.ok  { background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.35); color: #3fb950; }
+    .result.err { background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.35); color: var(--danger); }
+
+    /* ── Buttons ── */
+    button { cursor: pointer; border: none; background: none; font-family: inherit; }
+    .btn-xs {
+      font-size: 0.6875rem;
+      color: var(--muted);
+      padding: 0.125rem 0.375rem;
+      border-radius: var(--r);
+    }
+    .btn-xs:hover { background: var(--surface); color: var(--text); }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 640px) {
+      .import-layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="page-header">
+      <a href="/" class="back-link">← dashboard</a>
+      <h1 class="page-title">Import Bookmarks</h1>
+    </div>
+
+    <div class="drop-zone" id="drop-zone">
+      <p>Drag and drop your Firefox bookmarks HTML file here</p>
+      <p class="hint">Firefox: Bookmarks → Manage Bookmarks → Import and Backup → Export Bookmarks to HTML</p>
+      <button class="choose-btn" id="choose-btn">Choose file</button>
+      <input type="file" id="file-input" accept=".html,.htm">
+    </div>
+
+    <div id="import-section" class="hidden">
+      <div class="import-layout">
+
+        <div class="tree-panel">
+          <div class="tree-toolbar">
+            <button class="btn-xs" id="check-all">check all</button>
+            <button class="btn-xs" id="uncheck-all">uncheck all</button>
+            <span class="tally" id="tally">0 selected</span>
+          </div>
+          <div class="tree-scroll" id="tree-root"></div>
+        </div>
+
+        <div class="sidebar">
+          <div class="sidebar-title">Import into</div>
+          <div class="field">
+            <label for="panel-select">Panel</label>
+            <select id="panel-select"></select>
+          </div>
+          <div class="field">
+            <label for="cat-select">Category</label>
+            <select id="cat-select"></select>
+          </div>
+          <div class="sel-count" id="sel-count"><strong>0</strong> selected</div>
+          <button class="import-btn" id="import-btn" disabled>Import</button>
+          <div id="result"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script is:inline define:vars={{ panelData }}>
+    // ── Bookmark parsing ───────────────────────────────────────────────────────
+
+    function parseBookmarks(html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const topDl = doc.querySelector('dl');
+      return topDl ? parseDl(topDl) : [];
+    }
+
+    function parseDl(dl) {
+      const items = [];
+      for (const dt of dl.querySelectorAll(':scope > dt')) {
+        const a   = dt.querySelector(':scope > a');
+        const h3  = dt.querySelector(':scope > h3');
+        if (a) {
+          const href = a.getAttribute('href') || '';
+          // Skip Firefox internal bookmarks
+          if (!href || href.startsWith('place:') || href.startsWith('javascript:')) continue;
+          const dd = dt.nextElementSibling?.tagName?.toLowerCase() === 'dd'
+            ? dt.nextElementSibling.textContent.trim() : '';
+          items.push({ type: 'link', name: a.textContent.trim() || href, url: href, description: dd });
+        } else if (h3) {
+          const subDl    = dt.querySelector(':scope > dl');
+          const children = subDl ? parseDl(subDl) : [];
+          if (children.length) items.push({ type: 'folder', name: h3.textContent.trim(), children });
+        }
+      }
+      return items;
+    }
+
+    // ── Tree rendering ─────────────────────────────────────────────────────────
+
+    function renderTree(items, container) {
+      for (const item of items) {
+        container.appendChild(item.type === 'folder' ? makeFolder(item) : makeLink(item));
+      }
+    }
+
+    function makeFolder(item) {
+      const el  = document.createElement('div');
+      el.className = 'bf-folder';
+
+      const hdr = document.createElement('div');
+      hdr.className = 'bf-folder-header';
+
+      const cb  = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'bf-cb';
+
+      const tog = document.createElement('span');
+      tog.className = 'bf-toggle';
+      tog.textContent = '▾';
+
+      const name = document.createElement('span');
+      name.className = 'bf-folder-name';
+      name.textContent = item.name;
+
+      hdr.append(cb, tog, name);
+      el.appendChild(hdr);
+
+      const children = document.createElement('div');
+      children.className = 'bf-children';
+      renderTree(item.children, children);
+      el.appendChild(children);
+
+      // Collapse/expand
+      const toggleCollapse = () => {
+        const collapsed = children.classList.toggle('collapsed');
+        tog.textContent = collapsed ? '▸' : '▾';
+      };
+      tog.addEventListener('click',  e => { e.stopPropagation(); toggleCollapse(); });
+      name.addEventListener('click', toggleCollapse);
+
+      // Check/uncheck all descendants
+      cb.addEventListener('change', () => {
+        children.querySelectorAll('.bf-cb').forEach(c => {
+          c.checked = cb.checked;
+          c.indeterminate = false;
+        });
+        updateAncestors(el);
+        updateCount();
+      });
+
+      return el;
+    }
+
+    function makeLink(item) {
+      const el = document.createElement('div');
+      el.className = 'bf-link';
+      el.dataset.name        = item.name;
+      el.dataset.url         = item.url;
+      el.dataset.description = item.description;
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'bf-cb';
+
+      const name = document.createElement('span');
+      name.className = 'bf-link-name';
+      name.textContent = item.name;
+
+      const url = document.createElement('span');
+      url.className = 'bf-link-url';
+      url.textContent = item.url;
+
+      el.append(cb, name, url);
+
+      // Clicking anywhere on the row toggles the checkbox
+      el.addEventListener('click', e => {
+        if (e.target === cb) return;
+        cb.checked = !cb.checked;
+        updateAncestors(el);
+        updateCount();
+      });
+      cb.addEventListener('change', () => { updateAncestors(el); updateCount(); });
+
+      return el;
+    }
+
+    // Update a folder's checkbox to reflect the state of its direct children
+    function updateFolderCb(folderEl) {
+      const cb          = folderEl.querySelector(':scope > .bf-folder-header > .bf-cb');
+      const childrenDiv = folderEl.querySelector(':scope > .bf-children');
+      if (!cb || !childrenDiv) return;
+
+      const childCbs = [
+        ...childrenDiv.querySelectorAll(':scope > .bf-folder > .bf-folder-header > .bf-cb'),
+        ...childrenDiv.querySelectorAll(':scope > .bf-link > .bf-cb'),
+      ];
+      if (!childCbs.length) return;
+
+      const nChecked = childCbs.filter(c => c.checked && !c.indeterminate).length;
+      const nIndet   = childCbs.filter(c => c.indeterminate).length;
+
+      if (nChecked === childCbs.length && !nIndet) {
+        cb.checked = true;  cb.indeterminate = false;
+      } else if (!nChecked && !nIndet) {
+        cb.checked = false; cb.indeterminate = false;
+      } else {
+        cb.checked = false; cb.indeterminate = true;
+      }
+    }
+
+    // Walk up the tree updating every ancestor folder
+    function updateAncestors(el) {
+      let cur = el.parentElement?.closest('.bf-folder');
+      while (cur) {
+        updateFolderCb(cur);
+        cur = cur.parentElement?.closest('.bf-folder');
+      }
+    }
+
+    // ── Selection tracking ─────────────────────────────────────────────────────
+
+    function getSelectedLinks() {
+      return [...document.querySelectorAll('.bf-link')]
+        .filter(el => el.querySelector('.bf-cb')?.checked)
+        .map(el => ({ name: el.dataset.name, url: el.dataset.url, description: el.dataset.description }));
+    }
+
+    function updateCount() {
+      const n = getSelectedLinks().length;
+      document.getElementById('tally').textContent = `${n} selected`;
+      document.getElementById('sel-count').innerHTML =
+        `<strong>${n}</strong> bookmark${n !== 1 ? 's' : ''} selected`;
+      document.getElementById('import-btn').disabled = n === 0 || !catSelect.value;
+    }
+
+    // ── Panel / category dropdowns ─────────────────────────────────────────────
+
+    const panelSelect = document.getElementById('panel-select');
+    const catSelect   = document.getElementById('cat-select');
+
+    panelData.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      panelSelect.appendChild(opt);
+    });
+
+    function populateCategories(panelId) {
+      catSelect.innerHTML = '';
+      const panel = panelData.find(p => p.id === panelId);
+      if (!panel?.categories.length) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '— create a category first —';
+        catSelect.appendChild(opt);
+        return;
+      }
+      panel.categories.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name;
+        catSelect.appendChild(opt);
+      });
+    }
+
+    if (panelData.length) populateCategories(panelData[0].id);
+    panelSelect.addEventListener('change', () => {
+      populateCategories(Number(panelSelect.value));
+      updateCount();
+    });
+
+    // ── File loading ───────────────────────────────────────────────────────────
+
+    const dropZone  = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    document.getElementById('choose-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+    dropZone.addEventListener('click',     () => fileInput.click());
+    dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop',      e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+    function loadFile(file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const items = parseBookmarks(e.target.result);
+        const root  = document.getElementById('tree-root');
+        root.innerHTML = '';
+        renderTree(items, root);
+        document.getElementById('import-section').classList.remove('hidden');
+        document.getElementById('result').className = '';
+        document.getElementById('result').textContent = '';
+        updateCount();
+      };
+      reader.readAsText(file);
+    }
+
+    // ── Toolbar buttons ────────────────────────────────────────────────────────
+
+    document.getElementById('check-all').addEventListener('click', () => {
+      document.querySelectorAll('#tree-root .bf-cb').forEach(cb => {
+        cb.checked = true; cb.indeterminate = false;
+      });
+      updateCount();
+    });
+    document.getElementById('uncheck-all').addEventListener('click', () => {
+      document.querySelectorAll('#tree-root .bf-cb').forEach(cb => {
+        cb.checked = false; cb.indeterminate = false;
+      });
+      updateCount();
+    });
+
+    // ── Import ─────────────────────────────────────────────────────────────────
+
+    const importBtn = document.getElementById('import-btn');
+    const resultEl  = document.getElementById('result');
+
+    importBtn.addEventListener('click', async () => {
+      const links      = getSelectedLinks();
+      const categoryId = Number(catSelect.value);
+      if (!links.length || !categoryId) return;
+
+      importBtn.disabled    = true;
+      importBtn.textContent = 'Importing…';
+
+      try {
+        const resp = await fetch('/api/links/batch', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ links, category_id: categoryId }),
+        });
+
+        if (resp.ok) {
+          const { imported } = await resp.json();
+          resultEl.className   = 'result ok';
+          resultEl.textContent = `${imported} bookmark${imported !== 1 ? 's' : ''} imported.`;
+          // Uncheck the imported links
+          document.querySelectorAll('#tree-root .bf-link').forEach(el => {
+            const cb = el.querySelector('.bf-cb');
+            if (cb?.checked) { cb.checked = false; updateAncestors(el); }
+          });
+        } else {
+          resultEl.className   = 'result err';
+          resultEl.textContent = 'Import failed — please try again.';
+        }
+      } catch {
+        resultEl.className   = 'result err';
+        resultEl.textContent = 'Network error — please try again.';
+      }
+
+      importBtn.textContent = 'Import';
+      updateCount();
+    });
+  </script>
+</body>
+</html>
