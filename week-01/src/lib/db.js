@@ -31,12 +31,16 @@ db.exec(`
   );
 `);
 
-// ── Migration: add panel_id to categories ─────────────────────────────────────
+// ── Migrations ────────────────────────────────────────────────────────────────
 try {
   db.exec(`ALTER TABLE categories ADD COLUMN panel_id INTEGER REFERENCES panels(id) ON DELETE CASCADE`);
-} catch {
-  // Column already exists — safe to ignore.
-}
+} catch { /* already exists */ }
+try {
+  db.exec(`ALTER TABLE categories ADD COLUMN position INTEGER DEFAULT 0`);
+} catch { /* already exists */ }
+try {
+  db.exec(`ALTER TABLE links ADD COLUMN position INTEGER DEFAULT 0`);
+} catch { /* already exists */ }
 
 // ── Seed default panel if none exists ─────────────────────────────────────────
 const seedDefault = db.transaction(() => {
@@ -63,10 +67,10 @@ export function deletePanel(id) {
 
 // ── Categories (scoped to panel) ──────────────────────────────────────────────
 export function getCategories(panelId) {
-  const cats = db.prepare('SELECT * FROM categories WHERE panel_id = ? ORDER BY id').all(panelId);
+  const cats = db.prepare('SELECT * FROM categories WHERE panel_id = ? ORDER BY position, id').all(panelId);
   if (!cats.length) return [];
   const links = db.prepare(
-    `SELECT * FROM links WHERE category_id IN (${cats.map(() => '?').join(',')}) ORDER BY id`
+    `SELECT * FROM links WHERE category_id IN (${cats.map(() => '?').join(',')}) ORDER BY position, id`
   ).all(cats.map(c => c.id));
   return cats.map(c => ({ ...c, links: links.filter(l => l.category_id === c.id) }));
 }
@@ -102,3 +106,28 @@ export const updateLink = (id, name, url) =>
 
 export const deleteLink = (id) =>
   db.prepare('DELETE FROM links WHERE id = ?').run(id);
+
+// ── Cross-panel link move ─────────────────────────────────────────────────────
+export function moveLinkToPanel(linkId, panelId) {
+  const cat = db.prepare(
+    'SELECT id FROM categories WHERE panel_id = ? ORDER BY position, id LIMIT 1'
+  ).get(panelId);
+  if (!cat) return null;
+  const maxPos = db.prepare(
+    'SELECT COALESCE(MAX(position), -1) AS m FROM links WHERE category_id = ?'
+  ).get(cat.id).m;
+  db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?')
+    .run(cat.id, maxPos + 1, linkId);
+  return cat.id;
+}
+
+// ── Reordering ────────────────────────────────────────────────────────────────
+export function reorderCategories(ids) {
+  const stmt = db.prepare('UPDATE categories SET position = ? WHERE id = ?');
+  db.transaction(() => ids.forEach((id, i) => stmt.run(i, id)))();
+}
+
+export function reorderLinks(ids, categoryId) {
+  const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
+  db.transaction(() => ids.forEach((id, i) => stmt.run(categoryId, i, id)))();
+}

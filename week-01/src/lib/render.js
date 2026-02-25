@@ -8,8 +8,9 @@ function esc(v) {
 
 function renderLink(link, panelId) {
   return `
-    <div class="link-item" id="link-${link.id}" x-data="{ editing: false }">
+    <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ editing: false }">
       <div x-show="!editing" class="link-row">
+        <span class="drag-handle link-drag-handle">⠿</span>
         <a href="${esc(link.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
         <span class="link-actions">
           <button class="btn-action" @click="editing = true">edit</button>
@@ -35,8 +36,9 @@ function renderLink(link, panelId) {
 
 function renderCategory(cat, panelId) {
   return `
-    <div class="category" id="cat-${cat.id}">
+    <div class="category" id="cat-${cat.id}" data-id="${cat.id}">
       <div class="category-header" x-data="{ renaming: false }">
+        <span class="drag-handle cat-drag-handle">⠿</span>
         <h2 class="category-title" x-show="!renaming">${esc(cat.name)}</h2>
         <form x-show="renaming" x-cloak class="inline-form cat-rename-form"
           hx-put="/api/categories/${cat.id}"

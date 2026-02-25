@@ -126,7 +126,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     .category-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 0.375rem;
       padding: 0.5rem 0.75rem;
       background: var(--surface2);
       border-bottom: 1px solid var(--border);
@@ -138,6 +138,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--text);
+      flex: 1;
     }
 
     /* ── Links ──────────────────────────────────────────── */
@@ -184,6 +185,49 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     .cat-actions { display: flex; align-items: center; gap: 0.125rem; }
     .cat-rename-form { flex: 1; }
     .cat-rename-form input[name="name"] { width: auto; flex: 1; min-width: 60px; }
+
+    /* ── Drag handles ───────────────────────────────────── */
+    .drag-handle {
+      cursor: grab;
+      color: var(--muted);
+      opacity: 0.4;
+      flex-shrink: 0;
+      user-select: none;
+      font-size: 0.875rem;
+      line-height: 1;
+    }
+    .drag-handle:hover { opacity: 1; color: var(--text); }
+    .drag-handle:active { cursor: grabbing; }
+    .sortable-ghost { opacity: 0.25; }
+    /* forceFallback clone: must be pointer-events:none so elementFromPoint
+       looks through it to the element beneath (e.g. a panel tab). */
+    .sortable-fallback { pointer-events: none !important; box-shadow: 0 4px 16px rgba(0,0,0,0.5); opacity: 0.9; }
+    .links-list { min-height: 1.5rem; }
+
+    /* ── Panel tab as drag-over drop zone ───────────────── */
+    .tab-drop-hover { border-color: var(--link); }
+    .tab-drop-hover .panel-tab__btn { color: var(--link); background: rgba(88,166,255,0.12); }
+
+    /* ── Cross-panel drag overlay ────────────────────────── */
+    .panel-drag-overlay {
+      position: fixed;
+      z-index: 50;
+      background: var(--bg);
+      border: 1px solid var(--link);
+      border-radius: var(--r);
+      padding: 0.75rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+      overflow-y: auto;
+      max-height: 60vh;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.75rem;
+      align-items: start;
+    }
+    /* Hide interactive controls — overlay is a drop-target only */
+    .panel-drag-overlay .cat-actions,
+    .panel-drag-overlay .link-actions,
+    .panel-drag-overlay .add-link { display: none !important; }
 
     /* ── Inline forms ───────────────────────────────────── */
     .inline-form {
@@ -244,16 +288,217 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
   <script>
     import Alpine from 'alpinejs';
     import 'htmx.org';
+    import Sortable from 'sortablejs';
+
     window.Alpine = Alpine;
     Alpine.start();
 
+    // Track mouse position with a listener registered at page-load, BEFORE
+    // SortableJS adds any listeners. This fires reliably during forceFallback
+    // drags regardless of what SortableJS does with later mousemove listeners.
+    let _mx = 0, _my = 0;
+    document.addEventListener('mousemove', e => { _mx = e.clientX; _my = e.clientY; });
+
+    let _catSortable      = null;
+    let _linkSortables    = [];
+    let _dragPoll         = null;
+    let _tabHoverEl       = null;
+    let _tabHoverTimer    = null;
+    let _overlay          = null;
+    let _overlaySortables = [];
+    let _overlayPanelId   = null;
+    let _overlayPanelBtn  = null;
+
+    function saveCatOrder() {
+      const catsEl = document.getElementById('categories');
+      if (!catsEl) return;
+      const ids = [...catsEl.querySelectorAll(':scope > .category')]
+        .map(el => Number(el.dataset.id));
+      fetch('/api/categories/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+    }
+
+    function closeOverlay() {
+      if (!_overlay) return;
+      _overlaySortables.forEach(s => { try { s.destroy(); } catch {} });
+      _overlaySortables = [];
+      _overlay.remove();
+      _overlay         = null;
+      _overlayPanelId  = null;
+      _overlayPanelBtn = null;
+    }
+
+    // Clears the tab highlight and cancels the hover timer.
+    // Does NOT close the overlay — that only happens in onEnd.
+    function clearTabHover() {
+      clearTimeout(_tabHoverTimer); _tabHoverTimer = null;
+      if (_tabHoverEl) { _tabHoverEl.classList.remove('tab-drop-hover'); _tabHoverEl = null; }
+    }
+
+    async function showPanelOverlay(panelId, btn) {
+      if (_overlayPanelId === panelId && _overlay) return; // already showing
+      closeOverlay();
+
+      const resp = await fetch(`/api/categories?panel_id=${panelId}`);
+      if (!resp.ok) return;
+      const html = await resp.text();
+      // Skip if target panel has no categories yet.
+      if (!html.includes('class="category"')) return;
+
+      const panelBar = document.querySelector('.panel-bar');
+      const rect = panelBar
+        ? panelBar.getBoundingClientRect()
+        : { bottom: 60, left: 16 };
+      const maxW = window.innerWidth - rect.left - 16;
+
+      _overlay = document.createElement('div');
+      _overlay.className = 'panel-drag-overlay';
+      _overlay.style.top   = (rect.bottom + 8) + 'px';
+      _overlay.style.left  = rect.left + 'px';
+      _overlay.style.width = Math.min(760, maxW) + 'px';
+      _overlay.innerHTML   = html;
+      document.body.appendChild(_overlay);
+
+      _overlayPanelId  = panelId;
+      _overlayPanelBtn = btn;
+
+      _overlay.querySelectorAll('.links-list').forEach(list => {
+        const s = Sortable.create(list, {
+          group: 'links',
+          handle: '.link-drag-handle',
+          animation: 150,
+          forceFallback: true,
+          fallbackTolerance: 3,
+        });
+        _overlaySortables.push(s);
+      });
+    }
+
+    // Poll every 50 ms during a link drag: highlight the panel tab under the
+    // cursor and, after 500 ms of hover, show the target panel's categories as
+    // a floating drop-target overlay.
+    function checkTabHover() {
+      const el = document.elementFromPoint(_mx, _my);
+      // While cursor is inside the overlay, leave everything alone.
+      if (_overlay && _overlay.contains(el)) return;
+
+      const tab = el?.closest('.panel-tab');
+      if (!tab) { clearTabHover(); return; }
+      if (_tabHoverEl === tab) return; // still on same tab
+
+      clearTabHover();
+      _tabHoverEl = tab;
+      tab.classList.add('tab-drop-hover');
+
+      const btn = tab.querySelector('.panel-tab__btn');
+      const m = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
+      if (m) {
+        const panelId = Number(m[1]);
+        _tabHoverTimer = setTimeout(() => showPanelOverlay(panelId, btn), 500);
+      }
+    }
+
+    function addLinkSortables() {
+      document.querySelectorAll('.links-list').forEach(list => {
+        if (list._si) return;
+        list._si = Sortable.create(list, {
+          group: 'links',
+          handle: '.link-drag-handle',
+          animation: 150,
+          forceFallback: true,
+          fallbackTolerance: 3,
+          onStart() { _dragPoll = setInterval(checkTabHover, 50); },
+          onEnd(evt) {
+            clearInterval(_dragPoll); _dragPoll = null;
+
+            // Capture overlay state before clearing — closeOverlay() detaches
+            // the overlay DOM, but detached nodes are still traversable.
+            const itemInOverlay = _overlay && _overlay.contains(evt.item);
+            const savedBtn      = _overlayPanelBtn;
+
+            const under    = document.elementFromPoint(_mx, _my);
+            const panelTab = itemInOverlay
+              ? null
+              : (under?.closest('.panel-tab') ?? _tabHoverEl);
+
+            clearTabHover();
+            closeOverlay();
+
+            if (itemInOverlay) {
+              // Dropped into a specific category in the overlay.
+              const catEl = evt.item.closest('.category');
+              if (!catEl) return;
+              const linksList  = catEl.querySelector('.links-list');
+              const categoryId = Number(catEl.dataset.id);
+              const ids = [...linksList.querySelectorAll(':scope > .link-item')]
+                .map(el => Number(el.dataset.id));
+              fetch('/api/links/reorder', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids, category_id: categoryId }),
+              }).then(r => { if (r.ok && savedBtn) savedBtn.click(); });
+              return;
+            }
+
+            if (panelTab) {
+              // Dropped directly on a tab (no overlay) → first category fallback.
+              const btn = panelTab.querySelector('.panel-tab__btn');
+              const m = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
+              if (!m) return;
+              fetch('/api/links/move-to-panel', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ link_id: Number(evt.item.dataset.id), panel_id: Number(m[1]) }),
+              }).then(r => { if (r.ok) btn.click(); });
+              return;
+            }
+
+            // Normal in-panel sort / cross-category move.
+            const catEl = evt.item.closest('.category');
+            if (!catEl?.isConnected) return;
+            const linksList  = catEl.querySelector('.links-list');
+            const categoryId = Number(catEl.dataset.id);
+            const ids = [...linksList.querySelectorAll(':scope > .link-item')]
+              .map(el => Number(el.dataset.id));
+            fetch('/api/links/reorder', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids, category_id: categoryId }),
+            });
+          },
+        });
+        _linkSortables.push(list._si);
+      });
+    }
+
+    function initSortable() {
+      if (_catSortable) { _catSortable.destroy(); _catSortable = null; }
+      _linkSortables.forEach(s => { try { s.destroy(); } catch {} });
+      _linkSortables = [];
+      document.querySelectorAll('.links-list').forEach(l => delete l._si);
+
+      const catsEl = document.getElementById('categories');
+      if (catsEl) {
+        _catSortable = Sortable.create(catsEl, {
+          handle: '.cat-drag-handle',
+          animation: 150,
+          onEnd: saveCatOrder,
+        });
+      }
+      addLinkSortables();
+    }
+
+    initSortable();
+
     document.addEventListener('htmx:afterSwap', (evt) => {
-      if (evt.target.id === 'categories') {
+      const id = evt.target.id;
+      if (id === 'categories' || id === 'main') initSortable();
+      if (id === 'categories') {
         const ab = document.querySelector('.action-bar');
-        if (ab) {
-          Alpine.$data(ab).adding = false;
-          ab.querySelector('form')?.reset();
-        }
+        if (ab) { Alpine.$data(ab).adding = false; ab.querySelector('form')?.reset(); }
       }
     });
   </script>
