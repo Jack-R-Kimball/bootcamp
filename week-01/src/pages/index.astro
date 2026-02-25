@@ -621,6 +621,17 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
 
     initSortable();
 
+    // Press 1–9 to switch panels; ignored while typing in a form field.
+    document.addEventListener('keydown', e => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const n = parseInt(e.key);
+      if (n >= 1 && n <= 9) {
+        const btn = document.querySelectorAll('.panel-tab__btn')[n - 1];
+        if (btn) btn.click();
+      }
+    });
+
     document.addEventListener('htmx:afterSwap', (evt) => {
       const id = evt.target.id;
       if (id === 'categories' || id === 'main') initSortable();
