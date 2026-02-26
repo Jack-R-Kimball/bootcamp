@@ -155,10 +155,23 @@ function renderActionBar() {
     </div>`;
 }
 
+function renderSelectionBar() {
+  return `
+    <div id="selection-bar" class="selection-bar" hidden>
+      <span id="sel-count" class="sel-count"></span>
+      <span class="sel-sep">selected · Move to:</span>
+      <select id="sel-panel-dd"></select>
+      <select id="sel-cat-dd"></select>
+      <button id="sel-move"  class="btn-primary">move</button>
+      <button id="sel-clear" class="btn-ghost">✕</button>
+    </div>`;
+}
+
 export function renderMain(panels, activePanelId, categories) {
   return `
     ${renderPanelBar(panels, activePanelId)}
     ${renderActionBar()}
+    ${renderSelectionBar()}
     <div id="categories">
       ${renderCategories(categories, activePanelId)}
     </div>`;

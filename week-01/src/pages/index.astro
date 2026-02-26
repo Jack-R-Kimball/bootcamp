@@ -449,6 +449,41 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     .btn-action:hover { background: var(--surface2); color: var(--text); }
     .btn-action.del:hover { color: var(--danger); background: rgba(248,81,73,0.1); }
 
+    /* ── Selected link item ─────────────────────────────────────────────── */
+    .link-item.link-selected {
+      background: color-mix(in srgb, var(--surface2) 65%, var(--accent) 35%);
+      box-shadow: inset 3px 0 0 var(--accent),
+                  0 0 0 1px color-mix(in srgb, var(--border) 30%, var(--accent) 70%);
+      border-radius: var(--r);
+    }
+
+    /* ── Selection bar ──────────────────────────────────────────────────── */
+    .selection-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.75rem;
+      margin-bottom: 0.5rem;
+      background: var(--surface);
+      border: 1px solid color-mix(in srgb, var(--border) 40%, var(--accent) 60%);
+      border-radius: var(--r);
+      font-size: 0.6875rem;
+    }
+    .selection-bar[hidden] { display: none !important; }
+    .sel-count { color: var(--accent); font-weight: 700; }
+    .sel-sep   { color: var(--muted); }
+    .selection-bar select {
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 0.15rem 0.375rem;
+      font-size: 0.6875rem;
+      font-family: inherit;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+    }
+    .selection-bar select:focus { border-color: var(--accent); }
+
     /* ── Touch / mobile: hover-only elements become always-on ───────────── */
     @media (hover: none) {
       .link-desc { display: block; }
@@ -628,6 +663,11 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     let _overlayPanelId   = null;
     let _overlayPanelBtn  = null;
 
+    // ── Multi-select state ────────────────────────────────────────────────────
+    let _selectedLinks  = new Set(); // selected link IDs (numbers)
+    let _catDragActive  = false;     // true while a category is being dragged
+    let _metaCache      = null;      // cached /api/meta response
+
     function saveCatOrder() {
       const catsEl = document.getElementById('categories');
       if (!catsEl) return;
@@ -639,6 +679,122 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         body: JSON.stringify({ ids }),
       });
     }
+
+    // ── Selection helpers ─────────────────────────────────────────────────────
+    function clearSelection() {
+      _selectedLinks.clear();
+      document.querySelectorAll('.link-item.link-selected')
+        .forEach(el => el.classList.remove('link-selected'));
+      const bar = document.getElementById('selection-bar');
+      if (bar) bar.hidden = true;
+    }
+
+    function onPanelDropdownChange() {
+      if (!_metaCache) return;
+      const panelDd = document.getElementById('sel-panel-dd');
+      const catDd   = document.getElementById('sel-cat-dd');
+      if (!panelDd || !catDd) return;
+      const panelId = Number(panelDd.value);
+      const panel   = _metaCache.find(p => p.id === panelId);
+      catDd.innerHTML = panel
+        ? panel.cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('')
+        : '';
+    }
+
+    async function updateSelectionBar() {
+      const bar = document.getElementById('selection-bar');
+      if (!bar) return;
+
+      if (_selectedLinks.size === 0) {
+        bar.hidden = true;
+        return;
+      }
+
+      // Populate dropdowns on first show (or after cache cleared)
+      if (bar.hidden || !_metaCache) {
+        _metaCache = await fetch('/api/meta').then(r => r.json()).catch(() => null);
+        if (!_metaCache) return;
+
+        const panelDd = document.getElementById('sel-panel-dd');
+        if (panelDd) {
+          panelDd.innerHTML = _metaCache
+            .map(p => `<option value="${p.id}">${p.name}</option>`)
+            .join('');
+          onPanelDropdownChange();
+        }
+      }
+
+      const countEl = document.getElementById('sel-count');
+      if (countEl) countEl.textContent = _selectedLinks.size;
+      bar.hidden = false;
+    }
+
+    function toggleLinkSelection(id, el) {
+      if (_selectedLinks.has(id)) {
+        _selectedLinks.delete(id);
+        el.classList.remove('link-selected');
+      } else {
+        _selectedLinks.add(id);
+        el.classList.add('link-selected');
+      }
+      updateSelectionBar();
+    }
+
+    async function handleBulkMove() {
+      const panelDd  = document.getElementById('sel-panel-dd');
+      const catDd    = document.getElementById('sel-cat-dd');
+      const activeEl = document.getElementById('active-panel');
+      if (!panelDd || !catDd || !activeEl) return;
+
+      const categoryId    = Number(catDd.value);
+      const sourcePanelId = Number(activeEl.value);
+      if (!categoryId || !sourcePanelId) return;
+
+      const ids = [..._selectedLinks];
+      clearSelection();
+      _metaCache = null;
+
+      const r = await fetch('/api/links/bulk-move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, category_id: categoryId, source_panel_id: sourcePanelId }),
+      });
+      if (r.ok) {
+        const html = await r.text();
+        const catsEl = document.getElementById('categories');
+        if (catsEl) {
+          catsEl.innerHTML = html;
+          htmx.process(catsEl);
+          initSortable();
+        }
+      }
+    }
+
+    // Selection bar buttons use event delegation so listeners survive #main swaps
+    // and never double-attach across initSortable() calls.
+    document.addEventListener('click', e => {
+      if (e.target.id === 'sel-move')  handleBulkMove();
+      if (e.target.id === 'sel-clear') clearSelection();
+    });
+    document.addEventListener('change', e => {
+      if (e.target.id === 'sel-panel-dd') onPanelDropdownChange();
+    });
+
+    function initSelectionBar() { /* listeners registered above via delegation */ }
+
+    // Shift+click to select/deselect link items.
+    // Note: `a` is intentionally NOT in the guard — shift+click on a link name
+    // should select the item, not open a new window. preventDefault() handles that.
+    document.addEventListener('click', e => {
+      if (!e.shiftKey) return;
+      const item = e.target.closest('.link-item');
+      if (!item) return;
+      // Don't intercept clicks on form controls or drag handles.
+      if (e.target.closest('form, input, textarea, button')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleLinkSelection(Number(item.dataset.id), item);
+    });
 
     function closeOverlay() {
       if (!_overlay) return;
@@ -714,7 +870,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
 
       const btn = tab.querySelector('.panel-tab__btn');
       const m = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
-      if (m) {
+      if (m && !_catDragActive) {
         const panelId = Number(m[1]);
         _tabHoverTimer = setTimeout(() => showPanelOverlay(panelId, btn), 500);
       }
@@ -822,13 +978,52 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         _catSortable = Sortable.create(catsEl, {
           handle: '.cat-drag-handle',
           animation: 150,
-          onEnd: saveCatOrder,
+          forceFallback: true,
+          fallbackTolerance: 3,
+          onStart() {
+            _catDragActive = true;
+            _dragPoll = setInterval(checkTabHover, 50);
+          },
+          onEnd(evt) {
+            clearInterval(_dragPoll); _dragPoll = null;
+            _catDragActive = false;
+
+            const under    = document.elementFromPoint(_mx, _my);
+            const panelTab = under?.closest('.panel-tab') ?? _tabHoverEl;
+            clearTabHover();
+
+            if (panelTab) {
+              // Dropped on a panel tab — move whole category there.
+              const btn = panelTab.querySelector('.panel-tab__btn');
+              const m   = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
+              if (!m) { saveCatOrder(); return; }
+              const sourcePanelId = Number(
+                document.getElementById('active-panel')?.value
+              );
+              fetch('/api/categories/move-to-panel', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  category_id:    Number(evt.item.dataset.id),
+                  panel_id:       Number(m[1]),
+                  source_panel_id: sourcePanelId,
+                }),
+              }).then(r => r.text()).then(html => {
+                document.getElementById('categories').innerHTML = html;
+                htmx.process(document.getElementById('categories'));
+                initSortable();
+              });
+              return;
+            }
+            saveCatOrder(); // normal reorder
+          },
         });
       }
       addLinkSortables();
+      initSelectionBar();
     }
 
-    initSortable();
+    initSortable(); // also calls initSelectionBar() at the end
 
     // Press 1–9 to switch panels; ignored while typing in a form field.
     document.addEventListener('keydown', e => {
@@ -843,7 +1038,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
 
     document.addEventListener('htmx:afterSwap', (evt) => {
       const id = evt.target.id;
-      if (id === 'categories' || id === 'main') { setFocusedLink(null); initSortable(); }
+      if (id === 'categories' || id === 'main') { setFocusedLink(null); clearSelection(); initSortable(); }
       if (id === 'categories') {
         const ab = document.querySelector('.action-bar');
         if (ab) { Alpine.$data(ab).adding = false; ab.querySelector('form')?.reset(); }

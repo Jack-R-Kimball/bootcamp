@@ -118,6 +118,17 @@ export const updateLink = (id, name, url, description = null) =>
 export const deleteLink = (id) =>
   db.prepare('DELETE FROM links WHERE id = ?').run(id);
 
+// ── Bulk link move ────────────────────────────────────────────────────────────
+export function bulkMoveLinks(ids, categoryId) {
+  const stmt = db.prepare('UPDATE links SET category_id = ? WHERE id = ?');
+  db.transaction(() => ids.forEach(id => stmt.run(categoryId, id)))();
+}
+
+// ── Move category to a different panel ────────────────────────────────────────
+export function moveCategoryToPanel(catId, panelId) {
+  db.prepare('UPDATE categories SET panel_id = ? WHERE id = ?').run(panelId, catId);
+}
+
 // ── Cross-panel link move ─────────────────────────────────────────────────────
 export function moveLinkToPanel(linkId, panelId) {
   const cat = db.prepare(
