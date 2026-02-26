@@ -202,7 +202,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     /* ── Categories grid ────────────────────────────────── */
     #categories {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
       gap: 0.75rem;
       align-items: start;
     }
@@ -213,7 +213,20 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--r);
+      position: relative;
+      z-index: 1;
+      transform-origin: top center;
+      transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
     }
+    /* Scale up on hover; collapse when a form field has focus (editing/adding) */
+    .category:hover:not(:focus-within) {
+      transform: scale(1.15);
+      z-index: 20;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      border-color: var(--accent);
+    }
+    /* Show all descriptions while the whole category card is hovered */
+    .category:hover:not(:focus-within) .link-desc { display: block; }
     .category-header {
       display: flex;
       align-items: center;
@@ -234,7 +247,18 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
 
     /* ── Links ──────────────────────────────────────────── */
     .links-list { padding: 0.25rem 0; }
-    .link-item  { position: relative; }
+    .link-item  {
+      position: relative;
+      z-index: 0;
+      border-radius: var(--r);
+      transition: background 150ms ease, box-shadow 150ms ease, min-height 220ms ease;
+    }
+    /* .link-focused is set by JS so layout-shift skipping is prevented */
+    .link-item.link-focused {
+      z-index: 5;
+      background: color-mix(in srgb, var(--surface2) 85%, var(--link) 15%);
+      box-shadow: 0 3px 14px rgba(0,0,0,0.55), 0 0 0 1px color-mix(in srgb, var(--border) 40%, var(--link) 60%);
+    }
     .link-row {
       display: flex;
       align-items: center;
@@ -255,14 +279,34 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .link-name:hover { color: var(--link-hv); text-decoration: underline; }
+    .link-name:hover {
+      color: var(--link-hv);
+      text-decoration: underline;
+      text-decoration-color: color-mix(in srgb, var(--link-hv) 35%, transparent);
+    }
+    /* Unwrap title, show URL and description on focused item */
+    .link-item.link-focused .link-name {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+    }
     .link-desc {
       display: none;
       font-size: 0.6875rem;
       color: var(--muted);
       line-height: 1.3;
     }
-    .link-item:hover .link-desc { display: block; }
+    .link-item.link-focused .link-desc { display: block; }
+    /* URL shown only on focused item (inside .link-row, so hidden when editing) */
+    .link-url {
+      display: none;
+      font-size: 0.625rem;
+      color: var(--muted);
+      opacity: 0.6;
+      word-break: break-all;
+      line-height: 1.3;
+    }
+    .link-item.link-focused .link-url { display: block; }
     .link-actions {
       position: absolute;
       right: 0.5rem;
@@ -295,7 +339,13 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     .add-link-btn:hover { color: var(--link); }
 
     /* ── Edit form ──────────────────────────────────────── */
-    .edit-form { padding: 0.375rem 0.75rem; }
+    .edit-form {
+      padding: 0.375rem 0.75rem;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .edit-form input { width: 100% !important; }
+    .edit-form button { align-self: flex-start; }
 
     /* ── Category rename ────────────────────────────────── */
     .cat-actions { display: flex; align-items: center; gap: 0.125rem; }
@@ -336,7 +386,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       overflow-y: auto;
       max-height: 60vh;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
       gap: 0.75rem;
       align-items: start;
     }
@@ -468,7 +518,91 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     // SortableJS adds any listeners. This fires reliably during forceFallback
     // drags regardless of what SortableJS does with later mousemove listeners.
     let _mx = 0, _my = 0;
-    document.addEventListener('mousemove', e => { _mx = e.clientX; _my = e.clientY; });
+
+    // ── Link item focus (JS-managed to prevent layout-shift skipping) ─────────
+    // When a focused item collapses, its content (title wrap, URL, description)
+    // vanishes, shifting every item below upward. The next mousemove then finds
+    // a different item 2-3 steps down. Two guards prevent skipping:
+    //   1. After each focus change, lock updates for two animation frames while
+    //      the layout reflows, then re-evaluate at the cursor's current position.
+    //   2. Within the same list, cap movement to one DOM step per evaluation.
+    let _focusedLink = null;
+    let _focusLocked = false;
+
+    function setFocusedLink(el) {
+      if (_focusedLink === el) return;
+
+      const prev = _focusedLink;
+      if (prev) {
+        // Freeze the outgoing item at its current expanded height before
+        // removing the class. This prevents items below from jumping upward
+        // while the cursor is still near them. The CSS min-height transition
+        // then releases the space gradually so the cursor naturally tracks
+        // onto the next item.
+        const h = prev.getBoundingClientRect().height;
+        prev.style.minHeight = h + 'px';
+        prev.classList.remove('link-focused');
+        requestAnimationFrame(() => { prev.style.minHeight = '0'; });
+        setTimeout(() => { prev.style.minHeight = ''; }, 280);
+      }
+
+      _focusedLink = el;
+      if (el) {
+        el.classList.add('link-focused');
+        _focusLocked = true;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          _focusLocked = false;
+          updateLinkFocus(_mx, _my);
+        }));
+      } else {
+        _focusLocked = false;
+      }
+    }
+
+    function updateLinkFocus(clientX, clientY) {
+      if (_dragPoll || _focusLocked) return;
+
+      const el = document.elementFromPoint(clientX, clientY);
+      const linkItem = el?.closest('.link-item');
+
+      if (linkItem) {
+        if (_focusedLink && linkItem !== _focusedLink) {
+          const curList = _focusedLink.closest('.links-list');
+          const newList = linkItem.closest('.links-list');
+          if (curList && curList === newList) {
+            // Cap to one DOM step — second guard against layout-shift jumps.
+            const items = [...curList.querySelectorAll(':scope > .link-item')];
+            const curIdx = items.indexOf(_focusedLink);
+            const newIdx = items.indexOf(linkItem);
+            if (newIdx > curIdx + 1) { setFocusedLink(items[curIdx + 1]); return; }
+            if (newIdx < curIdx - 1) { setFocusedLink(items[curIdx - 1]); return; }
+          }
+        }
+        setFocusedLink(linkItem);
+        return;
+      }
+
+      // Nothing under cursor — may be in a post-collapse gap. Advance by index.
+      if (_focusedLink) {
+        const rect = _focusedLink.getBoundingClientRect();
+        const list = _focusedLink.closest('.links-list');
+        const items = list ? [...list.querySelectorAll(':scope > .link-item')] : [];
+        const idx = items.indexOf(_focusedLink);
+        if (clientY > rect.bottom && idx < items.length - 1) {
+          setFocusedLink(items[idx + 1]);
+        } else if (clientY < rect.top && idx > 0) {
+          setFocusedLink(items[idx - 1]);
+        } else {
+          setFocusedLink(null);
+        }
+      }
+    }
+
+    document.addEventListener('mousemove', e => {
+      _mx = e.clientX; _my = e.clientY;
+      updateLinkFocus(e.clientX, e.clientY);
+    });
+    document.addEventListener('mouseleave', () => { _focusLocked = false; setFocusedLink(null); });
     document.addEventListener('touchmove', e => {
       const t = e.touches[0];
       if (t) { _mx = t.clientX; _my = t.clientY; }
@@ -700,7 +834,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
 
     document.addEventListener('htmx:afterSwap', (evt) => {
       const id = evt.target.id;
-      if (id === 'categories' || id === 'main') initSortable();
+      if (id === 'categories' || id === 'main') { setFocusedLink(null); initSortable(); }
       if (id === 'categories') {
         const ab = document.querySelector('.action-bar');
         if (ab) { Alpine.$data(ab).adding = false; ab.querySelector('form')?.reset(); }

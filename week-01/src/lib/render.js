@@ -13,6 +13,7 @@ function renderLink(link, panelId) {
         <span class="drag-handle link-drag-handle">⠿</span>
         <div class="link-info">
           <a href="${esc(link.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
+          <span class="link-url">${esc(link.url)}</span>
           ${link.description ? `<span class="link-desc">${esc(link.description)}</span>` : ''}
         </div>
         <span class="link-actions" x-show="menu" x-cloak @mouseleave="menu = false" @click="menu = false">
@@ -141,13 +142,13 @@ function renderActionBar() {
   // value, even after the user has switched tabs without reloading the action bar.
   return `
     <div class="action-bar" x-data="{ adding: false }">
-      <button x-show="!adding" @click="adding = true" class="btn-primary">+ category</button>
+      <button x-show="!adding" @click="adding = true; $nextTick(() => $refs.catName.focus())" class="btn-primary">+ category</button>
       <form x-show="adding" x-cloak class="inline-form"
         hx-post="/api/categories"
         hx-target="#categories"
         hx-swap="innerHTML"
         hx-include="#active-panel">
-        <input name="name" placeholder="category name" required>
+        <input x-ref="catName" name="name" placeholder="category name" required>
         <button type="submit" class="btn-primary">create</button>
         <button type="button" class="btn-ghost" @click="adding = false">cancel</button>
       </form>
