@@ -549,10 +549,12 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       _focusedLink = el;
       if (el) {
         el.classList.add('link-focused');
+        // Lock for two frames while the layout transitions settle.
+        // No re-evaluation here — focus advances only on actual mouse movement.
+        // Auto-advancing after the lock is what caused short items to be skipped.
         _focusLocked = true;
         requestAnimationFrame(() => requestAnimationFrame(() => {
           _focusLocked = false;
-          updateLinkFocus(_mx, _my);
         }));
       } else {
         _focusLocked = false;
