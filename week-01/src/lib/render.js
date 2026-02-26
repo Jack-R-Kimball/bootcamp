@@ -10,7 +10,7 @@ function renderLink(link, panelId) {
   return `
     <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ editing: false, menu: false }" @click.outside="menu = false">
       <div x-show="!editing" class="link-row" @contextmenu.prevent="menu = !menu">
-        <span class="drag-handle link-drag-handle">⠿</span>
+        <span class="drag-handle link-drag-handle" title="Drag to reorder">⠿</span>
         <div class="link-info">
           <a href="${esc(link.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
           <span class="link-url">${esc(link.url)}</span>
@@ -41,44 +41,55 @@ function renderLink(link, panelId) {
 
 function renderCategory(cat, panelId) {
   return `
-    <div class="category" id="cat-${cat.id}" data-id="${cat.id}">
-      <div class="category-header" x-data="{ renaming: false }">
-        <span class="drag-handle cat-drag-handle">⠿</span>
+    <div class="category" id="cat-${cat.id}" data-id="${cat.id}"
+         x-data="{ renaming: false, menu: false, addingLink: false }"
+         :class="{ 'cat-menu-open': menu }"
+         @click.outside="menu = false">
+      <div class="category-header">
+        <span class="drag-handle cat-drag-handle" title="Drag to reorder">⠿</span>
         <h2 class="category-title" x-show="!renaming">${esc(cat.name)}</h2>
         <form x-show="renaming" x-cloak class="inline-form cat-rename-form"
           hx-put="/api/categories/${cat.id}"
           hx-target="#categories"
-          hx-swap="innerHTML">
+          hx-swap="innerHTML"
+          @submit="renaming = false">
           <input type="hidden" name="panel_id" value="${panelId}">
-          <input name="name" value="${esc(cat.name)}" required>
+          <input name="name" value="${esc(cat.name)}" required x-ref="renameInput">
           <button type="submit" class="btn-primary">save</button>
           <button type="button" class="btn-ghost" @click="renaming = false">cancel</button>
         </form>
-        <div class="cat-actions" x-show="!renaming">
-          <button class="btn-action" @click="renaming = true">rename</button>
-          <button class="btn-danger"
-            hx-delete="/api/categories/${cat.id}?panel_id=${panelId}"
-            hx-target="#categories"
-            hx-swap="innerHTML"
-            hx-confirm="Delete '${esc(cat.name)}' and all its links?">&times;</button>
+        <div class="cat-menu" x-show="!renaming">
+          <button class="cat-menu-btn" @click.stop="menu = !menu" title="Category options">⋮</button>
+          <div class="cat-dropdown" x-show="menu" x-cloak>
+            <button class="cat-dd-item"
+              @click="renaming = true; menu = false; $nextTick(() => $refs.renameInput.focus())">rename</button>
+            <button class="cat-dd-item cat-dd-danger"
+              hx-delete="/api/categories/${cat.id}?panel_id=${panelId}"
+              hx-target="#categories"
+              hx-swap="innerHTML"
+              hx-confirm="Delete '${esc(cat.name)}' and all its links?">delete</button>
+            <div class="cat-dd-divider"></div>
+            <button class="cat-dd-item"
+              @click="addingLink = true; menu = false; $nextTick(() => $refs.linkInput.focus())">+ link</button>
+          </div>
         </div>
       </div>
       <div class="links-list">
         ${cat.links.map(l => renderLink(l, panelId)).join('')}
       </div>
-      <div class="add-link" x-data="{ open: false }">
-        <button x-show="!open" @click="open = true" class="btn-ghost add-link-btn">+ add link</button>
-        <form x-show="open" x-cloak class="inline-form"
+      <div class="add-link" x-show="addingLink" x-cloak>
+        <form class="inline-form"
           hx-post="/api/links"
           hx-target="#categories"
-          hx-swap="innerHTML">
+          hx-swap="innerHTML"
+          @submit="addingLink = false">
           <input type="hidden" name="category_id" value="${cat.id}">
           <input type="hidden" name="panel_id" value="${panelId}">
-          <input name="name" placeholder="Name" required>
+          <input name="name" placeholder="Name" required x-ref="linkInput">
           <input name="url" placeholder="https://" required>
           <input name="description" placeholder="Description (optional)">
-          <button type="submit" class="btn-primary">add</button>
-          <button type="button" class="btn-ghost" @click="open = false">cancel</button>
+          <button type="submit" class="btn-primary">+ link</button>
+          <button type="button" class="btn-ghost" @click="addingLink = false">cancel</button>
         </form>
       </div>
     </div>`;
@@ -86,7 +97,7 @@ function renderCategory(cat, panelId) {
 
 export function renderCategories(categories, panelId) {
   if (!categories.length) {
-    return '<p class="empty">No categories yet — create one above.</p>';
+    return '<p class="empty">No categories yet — add one via the ⚙ menu.</p>';
   }
   return categories.map(c => renderCategory(c, panelId)).join('');
 }
@@ -94,11 +105,9 @@ export function renderCategories(categories, panelId) {
 // ── Panel rendering ───────────────────────────────────────────────────────────
 
 function renderPanelTab(panel, totalPanels) {
-  // Use Alpine :class binding so the active state updates reactively on click.
-  // Static server-rendered classes would not update when Alpine's `active` changes.
   return `
     <div class="panel-tab" data-id="${panel.id}" :class="{ 'panel-tab--active': active === ${panel.id} }">
-      <span class="drag-handle panel-drag-grip">⠿</span>
+      <span class="drag-handle panel-drag-grip" title="Drag to reorder">⠿</span>
       <button class="panel-tab__btn"
         hx-get="/api/categories?panel_id=${panel.id}"
         hx-target="#categories"
@@ -118,40 +127,39 @@ function renderPanelTab(panel, totalPanels) {
 
 function renderPanelBar(panels, activePanelId) {
   return `
-    <div class="panel-bar" x-data="{ active: ${activePanelId || 0} }">
+    <div class="panel-bar" x-data="{ active: ${activePanelId || 0}, gearOpen: false, addingCat: false, addingPanel: false }" @click.outside="gearOpen = false">
       <input type="hidden" id="active-panel" name="panel_id" :value="active">
+      <div class="panel-gear">
+        <button class="gear-btn" @click.stop="gearOpen = !gearOpen" :class="{ active: gearOpen }" title="Add category or panel">⚙</button>
+        <div class="gear-dropdown" x-show="gearOpen" x-cloak>
+          <div x-show="!addingCat && !addingPanel">
+            <button class="gear-dd-item" @click="addingCat = true; $nextTick(() => $refs.catName.focus())">+ category</button>
+            <button class="gear-dd-item" @click="addingPanel = true; $nextTick(() => $refs.panelName.focus())">+ panel</button>
+          </div>
+          <form x-show="addingCat" x-cloak class="inline-form gear-form"
+            hx-post="/api/categories"
+            hx-target="#categories"
+            hx-swap="innerHTML"
+            hx-include="#active-panel"
+            @submit="addingCat = false; gearOpen = false">
+            <input x-ref="catName" name="name" placeholder="category name" required>
+            <button type="submit" class="btn-primary">create</button>
+            <button type="button" class="btn-ghost" @click="addingCat = false">cancel</button>
+          </form>
+          <form x-show="addingPanel" x-cloak class="inline-form gear-form"
+            hx-post="/api/panels"
+            hx-target="#main"
+            hx-swap="innerHTML"
+            @submit="addingPanel = false; gearOpen = false">
+            <input x-ref="panelName" name="name" placeholder="panel name" required>
+            <button type="submit" class="btn-primary">create</button>
+            <button type="button" class="btn-ghost" @click="addingPanel = false">cancel</button>
+          </form>
+        </div>
+      </div>
       <div class="panel-tabs">
         ${panels.map(p => renderPanelTab(p, panels.length)).join('')}
       </div>
-      <div class="panel-actions" x-data="{ adding: false }">
-        <button x-show="!adding" @click="adding = true; $nextTick(() => $refs.panelName.focus())" class="btn-ghost panel-add-btn">+ panel</button>
-        <form x-show="adding" x-cloak class="inline-form"
-          hx-post="/api/panels"
-          hx-target="#main"
-          hx-swap="innerHTML">
-          <input x-ref="panelName" name="name" placeholder="panel name" required>
-          <button type="submit" class="btn-primary">create</button>
-          <button type="button" class="btn-ghost" @click="adding = false">cancel</button>
-        </form>
-      </div>
-    </div>`;
-}
-
-function renderActionBar() {
-  // Uses hx-include="#active-panel" so it always reads the live Alpine-managed
-  // value, even after the user has switched tabs without reloading the action bar.
-  return `
-    <div class="action-bar" x-data="{ adding: false }">
-      <button x-show="!adding" @click="adding = true; $nextTick(() => $refs.catName.focus())" class="btn-primary">+ category</button>
-      <form x-show="adding" x-cloak class="inline-form"
-        hx-post="/api/categories"
-        hx-target="#categories"
-        hx-swap="innerHTML"
-        hx-include="#active-panel">
-        <input x-ref="catName" name="name" placeholder="category name" required>
-        <button type="submit" class="btn-primary">create</button>
-        <button type="button" class="btn-ghost" @click="adding = false">cancel</button>
-      </form>
     </div>`;
 }
 
@@ -170,7 +178,6 @@ function renderSelectionBar() {
 export function renderMain(panels, activePanelId, categories) {
   return `
     ${renderPanelBar(panels, activePanelId)}
-    ${renderActionBar()}
     ${renderSelectionBar()}
     <div id="categories">
       ${renderCategories(categories, activePanelId)}

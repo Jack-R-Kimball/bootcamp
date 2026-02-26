@@ -233,13 +233,46 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       border-left: 1px solid var(--border);
       border-radius: 0;
     }
-    .panel-actions { display: flex; align-items: center; }
-    .panel-add-btn { font-size: 0.6875rem; color: var(--muted); }
-    .panel-add-btn:hover { color: var(--link); }
     .panel-drag-grip { font-size: 0.55rem; padding: 0 0.15rem; }
 
-    /* ── Action bar ─────────────────────────────────────── */
-    .action-bar { margin-bottom: 1rem; }
+    /* ── Panel gear menu ─────────────────────────────────── */
+    .panel-gear { position: relative; }
+    .gear-btn {
+      font-size: 0.875rem;
+      color: var(--muted);
+      padding: 0.2rem 0.4rem;
+    }
+    .gear-btn:hover, .gear-btn.active { color: var(--text); background: var(--surface2); }
+    .gear-dropdown {
+      position: absolute;
+      left: 0;
+      top: calc(100% + 6px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      min-width: 180px;
+      z-index: 100;
+      padding: 0.375rem 0;
+    }
+    .gear-dd-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.6875rem;
+      color: var(--muted);
+      border-radius: 0;
+    }
+    .gear-dd-item:hover { color: var(--text); background: var(--surface2); }
+    .gear-form {
+      padding: 0.35rem 0.75rem;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.25rem;
+    }
+    .gear-form input { width: 100% !important; }
+    .gear-form button { align-self: flex-start; }
 
     /* ── Categories grid ────────────────────────────────── */
     #categories {
@@ -260,15 +293,15 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       transform-origin: top center;
       transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
     }
-    /* Scale up on hover; collapse when a form field has focus (editing/adding) */
-    .category:hover:not(:focus-within) {
+    /* Scale up on hover; suppress when a form has focus or the kebab menu is open */
+    .category:hover:not(:focus-within):not(.cat-menu-open) {
       transform: scale(1.15);
       z-index: 20;
       box-shadow: 0 8px 32px rgba(0,0,0,0.5);
       border-color: var(--accent);
     }
     /* Show all descriptions while the whole category card is hovered */
-    .category:hover:not(:focus-within) .link-desc { display: block; }
+    .category:hover:not(:focus-within):not(.cat-menu-open) .link-desc { display: block; }
     .category-header {
       display: flex;
       align-items: center;
@@ -365,20 +398,11 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       z-index: 10;
     }
 
-    /* ── Add link section ───────────────────────────────── */
+    /* ── Add link form (shown via kebab → + link) ───────── */
     .add-link {
       padding: 0.375rem 0.75rem;
       border-top: 1px solid var(--border);
     }
-    .add-link-btn {
-      font-size: 0.6875rem;
-      color: var(--muted);
-      width: 100%;
-      text-align: left;
-      padding: 0.125rem 0;
-      font-family: inherit;
-    }
-    .add-link-btn:hover { color: var(--link); }
 
     /* ── Edit form ──────────────────────────────────────── */
     .edit-form {
@@ -389,23 +413,66 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     .edit-form input { width: 100% !important; }
     .edit-form button { align-self: flex-start; }
 
-    /* ── Category rename ────────────────────────────────── */
-    .cat-actions { display: flex; align-items: center; gap: 0.125rem; }
+    /* ── Category kebab menu ────────────────────────────── */
     .cat-rename-form { flex: 1; }
     .cat-rename-form input[name="name"] { width: auto; flex: 1; min-width: 60px; }
+    .cat-menu { position: relative; margin-left: auto; flex-shrink: 0; }
+    .cat-menu-btn {
+      font-size: 1rem;
+      line-height: 1;
+      color: var(--muted);
+      padding: 0.1rem 0.35rem;
+      opacity: 0;
+      transition: opacity 150ms ease;
+    }
+    .category:hover .cat-menu-btn,
+    .cat-menu-open .cat-menu-btn { opacity: 1; }
+    .cat-dropdown {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      min-width: 120px;
+      z-index: 30;
+      padding: 0.25rem 0;
+    }
+    .cat-dd-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.6875rem;
+      color: var(--muted);
+      border-radius: 0;
+    }
+    .cat-dd-item:hover { color: var(--text); background: var(--surface2); }
+    .cat-dd-danger:hover { color: var(--danger); background: rgba(248,81,73,0.1); }
+    .cat-dd-divider { height: 1px; background: var(--border); margin: 0.25rem 0; }
 
-    /* ── Drag handles ───────────────────────────────────── */
+    /* ── Drag handles (appear on parent hover) ──────────── */
     .drag-handle {
       cursor: grab;
       color: var(--muted);
-      opacity: 0.4;
+      opacity: 0;
       flex-shrink: 0;
       user-select: none;
       font-size: 0.875rem;
       line-height: 1;
+      transition: opacity 150ms ease, color 150ms ease;
     }
     .drag-handle:hover { opacity: 1; color: var(--text); }
     .drag-handle:active { cursor: grabbing; }
+    .link-item:hover  .link-drag-handle  { opacity: 0.55; }
+    .category:hover   .cat-drag-handle   { opacity: 0.55; }
+    .panel-tab:hover  .panel-drag-grip   { opacity: 0.55; }
+    /* Always visible while dragging */
+    .sortable-ghost   .drag-handle,
+    .sortable-fallback .drag-handle { opacity: 0.8 !important; }
+    /* Always visible on touch devices */
+    @media (hover: none) { .drag-handle { opacity: 0.4 !important; } }
     .sortable-ghost { opacity: 0.25; }
     /* forceFallback clone: must be pointer-events:none so elementFromPoint
        looks through it to the element beneath (e.g. a panel tab). */
@@ -1082,10 +1149,6 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     document.addEventListener('htmx:afterSwap', (evt) => {
       const id = evt.target.id;
       if (id === 'categories' || id === 'main') { setFocusedLink(null); clearSelection(); initSortable(); }
-      if (id === 'categories') {
-        const ab = document.querySelector('.action-bar');
-        if (ab) { Alpine.$data(ab).adding = false; ab.querySelector('form')?.reset(); }
-      }
     });
   </script>
 </body>
