@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    /* Light browser theme: dark background (original) */
+    .bg     { fill: #161b22; }
+    .track  { stroke: #30363d; }
+    .needle { stroke: #e6edf3; }
+    .pivot  { fill: #30363d; }
+    .dot    { fill: #e6edf3; }
+    /* Dark browser theme: light background so icon stands out */
+    @media (prefers-color-scheme: dark) {
+      .bg     { fill: #e6edf3; }
+      .track  { stroke: #adbac7; }
+      .needle { stroke: #1f2328; }
+      .pivot  { fill: #adbac7; }
+      .dot    { fill: #1f2328; }
+    }
+  </style>
+  <circle cx="16" cy="16" r="16" class="bg"/>
+  <path d="M 5 22 A 11 11 0 0 0 27 22" fill="none" stroke-width="3" stroke-linecap="round" class="track"/>
+  <path d="M 5 22 A 11 11 0 0 0 22 13" fill="none" stroke="#f78166" stroke-width="3" stroke-linecap="round"/>
+  <line x1="16" y1="22" x2="21" y2="14" stroke-width="1.5" stroke-linecap="round" class="needle"/>
+  <circle cx="16" cy="22" r="2" class="pivot"/>
+  <circle cx="16" cy="22" r="1" class="dot"/>
+</svg>
