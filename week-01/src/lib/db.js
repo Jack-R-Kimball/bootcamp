@@ -118,6 +118,26 @@ export const updateLink = (id, name, url, description = null) =>
 export const deleteLink = (id) =>
   db.prepare('DELETE FROM links WHERE id = ?').run(id);
 
+// ── Search ────────────────────────────────────────────────────────────────────
+export function searchLinks(query, panelId = null, caseSensitive = false) {
+  const term = caseSensitive ? query : query.toLowerCase();
+  const matchExpr = caseSensitive
+    ? `(instr(l.name, ?) > 0 OR instr(l.url, ?) > 0 OR instr(COALESCE(l.description, ''), ?) > 0)`
+    : `(instr(lower(l.name), ?) > 0 OR instr(lower(l.url), ?) > 0 OR instr(lower(COALESCE(l.description, '')), ?) > 0)`;
+  const params = [term, term, term];
+  let sql = `
+    SELECT l.id, l.name, l.url, l.description,
+           c.id as cat_id, c.name as cat_name,
+           p.id as panel_id, p.name as panel_name
+    FROM links l
+    JOIN categories c ON c.id = l.category_id
+    JOIN panels p ON p.id = c.panel_id
+    WHERE ${matchExpr}`;
+  if (panelId) { sql += ' AND c.panel_id = ?'; params.push(panelId); }
+  sql += ' ORDER BY p.position, p.id, c.position, c.id, l.position, l.id';
+  return db.prepare(sql).all(...params);
+}
+
 // ── Bulk link move ────────────────────────────────────────────────────────────
 export function bulkMoveLinks(ids, categoryId) {
   const stmt = db.prepare('UPDATE links SET category_id = ? WHERE id = ?');

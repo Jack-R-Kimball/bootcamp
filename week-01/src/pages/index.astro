@@ -112,6 +112,60 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       border-bottom: 1px solid var(--border);
     }
 
+    /* ── Search bar ─────────────────────────────────────── */
+    .search-form {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      flex: 1;
+      max-width: 300px;
+    }
+    .search-input {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 0.2rem 0.5rem;
+      font-size: 0.75rem;
+      font-family: inherit;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      min-width: 0;
+    }
+    .search-input::placeholder { color: var(--muted); }
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(247,129,102,0.15);
+    }
+    .search-opt {
+      font-size: 0.6rem;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      padding: 0.15rem 0.35rem;
+      border: 1px solid transparent;
+      border-radius: var(--r);
+      white-space: nowrap;
+    }
+    .search-opt:hover { color: var(--text); background: var(--surface2); }
+    .search-opt.active {
+      color: var(--accent);
+      border-color: color-mix(in srgb, var(--border) 50%, var(--accent) 50%);
+    }
+
+    /* ── Search results ──────────────────────────────────── */
+    .sr-wrapper { grid-column: 1 / -1; }
+    .sr-item { border-bottom: 1px solid var(--border); }
+    .sr-item:last-child { border-bottom: none; }
+    .sr-loc {
+      font-size: 0.6rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      opacity: 0.7;
+    }
+    .sr-wrapper .link-url  { display: block !important; }
+    .sr-wrapper .link-desc { display: block !important; }
+
     /* ── Clock ──────────────────────────────────────────── */
     .clock { display: flex; flex-direction: column; align-items: center; line-height: 1.25; }
     .clock-time {
@@ -605,6 +659,16 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
   <div class="container">
     <div class="header">
       <h1>Dashboard</h1>
+      <form class="search-form" x-data="search" @submit.prevent>
+        <input type="search" class="search-input" placeholder="search links…"
+          x-model="q"
+          @input.debounce.300ms="run()"
+          @keydown.escape="q = ''; clear()">
+        <button type="button" class="search-opt" :class="{ active: cs }"
+          @click="cs = !cs; if (q) run()" title="Case sensitive">Aa</button>
+        <button type="button" class="search-opt" :class="{ active: allPanels }"
+          @click="allPanels = !allPanels; if (q) run()" title="Search all panels">all</button>
+      </form>
       <div x-data="clock" class="clock">
         <span class="clock-time" x-text="time"></span>
         <span class="clock-date" x-text="date"></span>
@@ -661,6 +725,39 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
           localStorage.setItem('theme', m);
           document.documentElement.setAttribute('data-theme', m);
         }
+      },
+    }));
+
+    Alpine.data('search', () => ({
+      q: '',
+      allPanels: false,
+      cs: false,
+      _ctrl: null,
+      async run() {
+        if (!this.q.trim()) { this.clear(); return; }
+        if (this._ctrl) this._ctrl.abort();
+        this._ctrl = new AbortController();
+        const panelId = document.getElementById('active-panel')?.value;
+        const p = new URLSearchParams({ q: this.q });
+        if (this.cs) p.set('cs', '1');
+        if (this.allPanels || !panelId) p.set('all', '1');
+        else p.set('panel_id', panelId);
+        try {
+          const r = await fetch('/api/search?' + p, { signal: this._ctrl.signal });
+          if (r.ok) {
+            const html = await r.text();
+            const catsEl = document.getElementById('categories');
+            if (catsEl) catsEl.innerHTML = html;
+          }
+        } catch (e) { if (e.name !== 'AbortError') throw e; }
+        this._ctrl = null;
+      },
+      clear() {
+        this.q = '';
+        if (this._ctrl) { this._ctrl.abort(); this._ctrl = null; }
+        const btn = document.querySelector('.panel-tab--active .panel-tab__btn')
+          ?? document.querySelector('.panel-tab__btn');
+        if (btn) btn.click();
       },
     }));
 
@@ -1148,7 +1245,12 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
 
     document.addEventListener('htmx:afterSwap', (evt) => {
       const id = evt.target.id;
-      if (id === 'categories' || id === 'main') { setFocusedLink(null); clearSelection(); initSortable(); }
+      if (id === 'categories' || id === 'main') {
+        setFocusedLink(null); clearSelection(); initSortable();
+        // Clear search input when HTMX replaces panel content
+        const sf = document.querySelector('.search-form');
+        if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
+      }
     });
   </script>
 </body>

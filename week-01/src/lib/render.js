@@ -95,6 +95,24 @@ function renderCategory(cat, panelId) {
     </div>`;
 }
 
+export function renderSearchResults(results, showPanel = false) {
+  if (!results.length) {
+    return '<div class="sr-wrapper"><p class="empty">No matches found.</p></div>';
+  }
+  const items = results.map(r => `
+    <div class="link-item sr-item">
+      <div class="link-row">
+        <div class="link-info">
+          <a href="${esc(r.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(r.name)}</a>
+          <span class="sr-loc">${showPanel ? esc(r.panel_name) + ' › ' : ''}${esc(r.cat_name)}</span>
+          <span class="link-url">${esc(r.url)}</span>
+          ${r.description ? `<span class="link-desc">${esc(r.description)}</span>` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+  return `<div class="sr-wrapper">${items}</div>`;
+}
+
 export function renderCategories(categories, panelId) {
   if (!categories.length) {
     return '<p class="empty">No categories yet — add one via the ⚙ menu.</p>';
