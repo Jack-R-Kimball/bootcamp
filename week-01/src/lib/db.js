@@ -47,6 +47,12 @@ try {
 try {
   db.exec(`ALTER TABLE links ADD COLUMN description TEXT`);
 } catch { /* already exists */ }
+try {
+  db.exec(`ALTER TABLE links ADD COLUMN tags TEXT`);
+} catch { /* already exists */ }
+try {
+  db.exec(`ALTER TABLE links ADD COLUMN keyword TEXT`);
+} catch { /* already exists */ }
 
 // ── Seed default panel if none exists ─────────────────────────────────────────
 const seedDefault = db.transaction(() => {
@@ -109,8 +115,8 @@ export function getPanelIdForLink(linkId) {
   ).get(linkId)?.panel_id ?? null;
 }
 
-export const createLink = (category_id, name, url, description = null) =>
-  db.prepare('INSERT INTO links (category_id, name, url, description) VALUES (?, ?, ?, ?)').run(category_id, name, url, description);
+export const createLink = (category_id, name, url, description = null, tags = null, keyword = null) =>
+  db.prepare('INSERT INTO links (category_id, name, url, description, tags, keyword) VALUES (?, ?, ?, ?, ?, ?)').run(category_id, name, url, description, tags, keyword);
 
 export const updateLink = (id, name, url, description = null) =>
   db.prepare('UPDATE links SET name = ?, url = ?, description = ? WHERE id = ?').run(name, url, description, id);
@@ -172,4 +178,19 @@ export function reorderCategories(ids) {
 export function reorderLinks(ids, categoryId) {
   const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
   db.transaction(() => ids.forEach((id, i) => stmt.run(categoryId, i, id)))();
+}
+
+// ── Find-or-create helpers (used by smart import) ─────────────────────────────
+export function findOrCreatePanel(name) {
+  const existing = db.prepare('SELECT id FROM panels WHERE name = ?').get(name);
+  if (existing) return { id: existing.id, isNew: false };
+  const r = db.prepare('INSERT INTO panels (name) VALUES (?)').run(name);
+  return { id: r.lastInsertRowid, isNew: true };
+}
+
+export function findOrCreateCategory(name, panelId) {
+  const existing = db.prepare('SELECT id FROM categories WHERE name = ? AND panel_id = ?').get(name, panelId);
+  if (existing) return { id: existing.id, isNew: false };
+  const r = db.prepare('INSERT INTO categories (name, panel_id) VALUES (?, ?)').run(name, panelId);
+  return { id: r.lastInsertRowid, isNew: true };
 }

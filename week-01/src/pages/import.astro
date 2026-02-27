@@ -253,6 +253,20 @@ const panelData = panels.map(p => ({
     .result.ok  { background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.35); color: #3fb950; }
     .result.err { background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.35); color: var(--danger); }
 
+    .sidebar-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0.875rem 0;
+    }
+    .smart-hint {
+      font-size: 0.6rem;
+      color: var(--muted);
+      margin-bottom: 0.625rem;
+      line-height: 1.6;
+    }
+    .smart-import-btn { background: var(--link); }
+    .smart-import-btn:hover:not(:disabled) { background: var(--link-hv); }
+
     /* ── Buttons ── */
     button { cursor: pointer; border: none; background: none; font-family: inherit; }
     .btn-xs {
@@ -308,8 +322,14 @@ const panelData = panels.map(p => ({
             <select id="cat-select"></select>
           </div>
           <div class="sel-count" id="sel-count"><strong>0</strong> selected</div>
-          <button class="import-btn" id="import-btn" disabled>Import</button>
+          <button class="import-btn" id="import-btn" disabled>Import selected</button>
           <div id="result"></div>
+
+          <div class="sidebar-divider"></div>
+          <div class="sidebar-title">Smart import</div>
+          <p class="smart-hint">Maps folders automatically:<br>L1 folder → panel · L2 → category · L3+ → prefix (a:, b:, …)</p>
+          <button class="import-btn smart-import-btn" id="smart-btn" disabled>Import by folder structure</button>
+          <div id="smart-result"></div>
         </div>
 
       </div>
@@ -317,6 +337,8 @@ const panelData = panels.map(p => ({
   </div>
 
   <script is:inline define:vars={{ panelData }}>
+    let _parsedTree = null; // full tree, used by smart import
+
     // ── Bookmark parsing ───────────────────────────────────────────────────────
 
     function parseBookmarks(html) {
@@ -334,9 +356,11 @@ const panelData = panels.map(p => ({
           const href = a.getAttribute('href') || '';
           // Skip Firefox internal bookmarks
           if (!href || href.startsWith('place:') || href.startsWith('javascript:')) continue;
-          const dd = dt.nextElementSibling?.tagName?.toLowerCase() === 'dd'
+          const dd      = dt.nextElementSibling?.tagName?.toLowerCase() === 'dd'
             ? dt.nextElementSibling.textContent.trim() : '';
-          items.push({ type: 'link', name: a.textContent.trim() || href, url: href, description: dd });
+          const tags    = a.getAttribute('TAGS')       || a.getAttribute('tags')        || '';
+          const keyword = a.getAttribute('SHORTCUTURL') || a.getAttribute('shortcuturl') || '';
+          items.push({ type: 'link', name: a.textContent.trim() || href, url: href, description: dd, tags, keyword });
         } else if (h3) {
           const subDl    = dt.querySelector(':scope > dl');
           const children = subDl ? parseDl(subDl) : [];
@@ -408,6 +432,8 @@ const panelData = panels.map(p => ({
       el.dataset.name        = item.name;
       el.dataset.url         = item.url;
       el.dataset.description = item.description;
+      el.dataset.tags        = item.tags    || '';
+      el.dataset.keyword     = item.keyword || '';
 
       const cb = document.createElement('input');
       cb.type = 'checkbox';
@@ -473,7 +499,7 @@ const panelData = panels.map(p => ({
     function getSelectedLinks() {
       return [...document.querySelectorAll('.bf-link')]
         .filter(el => el.querySelector('.bf-cb')?.checked)
-        .map(el => ({ name: el.dataset.name, url: el.dataset.url, description: el.dataset.description }));
+        .map(el => ({ name: el.dataset.name, url: el.dataset.url, description: el.dataset.description, tags: el.dataset.tags || '', keyword: el.dataset.keyword || '' }));
     }
 
     function updateCount() {
@@ -542,13 +568,16 @@ const panelData = panels.map(p => ({
     function loadFile(file) {
       const reader = new FileReader();
       reader.onload = e => {
-        const items = parseBookmarks(e.target.result);
+        _parsedTree = parseBookmarks(e.target.result);
         const root  = document.getElementById('tree-root');
         root.innerHTML = '';
-        renderTree(items, root);
+        renderTree(_parsedTree, root);
         document.getElementById('import-section').classList.remove('hidden');
         document.getElementById('result').className = '';
         document.getElementById('result').textContent = '';
+        document.getElementById('smart-result').className = '';
+        document.getElementById('smart-result').textContent = '';
+        document.getElementById('smart-btn').disabled = false;
         updateCount();
       };
       reader.readAsText(file);
@@ -607,8 +636,47 @@ const panelData = panels.map(p => ({
         resultEl.textContent = 'Network error — please try again.';
       }
 
-      importBtn.textContent = 'Import';
+      importBtn.textContent = 'Import selected';
       updateCount();
+    });
+
+    // ── Smart import ──────────────────────────────────────────────────────────
+
+    const smartBtn    = document.getElementById('smart-btn');
+    const smartResult = document.getElementById('smart-result');
+
+    smartBtn.addEventListener('click', async () => {
+      if (!_parsedTree) return;
+
+      smartBtn.disabled    = true;
+      smartBtn.textContent = 'Importing…';
+
+      try {
+        const resp = await fetch('/api/import/smart', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(_parsedTree),
+        });
+
+        if (resp.ok) {
+          const { panelsCreated, catsCreated, linksAdded, linksSkipped } = await resp.json();
+          smartResult.className   = 'result ok';
+          smartResult.textContent =
+            `${linksAdded} link${linksAdded !== 1 ? 's' : ''} imported` +
+            (linksSkipped ? `, ${linksSkipped} skipped` : '') +
+            ` · ${panelsCreated} panel${panelsCreated !== 1 ? 's' : ''} created` +
+            ` · ${catsCreated} categor${catsCreated !== 1 ? 'ies' : 'y'} created.`;
+        } else {
+          smartResult.className   = 'result err';
+          smartResult.textContent = 'Import failed — please try again.';
+        }
+      } catch {
+        smartResult.className   = 'result err';
+        smartResult.textContent = 'Network error — please try again.';
+      }
+
+      smartBtn.textContent = 'Import by folder structure';
+      smartBtn.disabled    = false;
     });
   </script>
 </body>

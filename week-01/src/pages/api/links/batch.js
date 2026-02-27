@@ -8,7 +8,7 @@ export async function POST({ request }) {
   let imported = 0;
   for (const link of links) {
     if (link.name && link.url) {
-      createLink(Number(category_id), link.name, link.url, link.description || null);
+      createLink(Number(category_id), link.name, link.url, link.description || null, link.tags || null, link.keyword || null);
       imported++;
     }
   }
