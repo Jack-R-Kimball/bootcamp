@@ -58,8 +58,11 @@ export async function POST({ request }) {
         linksSkipped += skipped;
 
       } else if (l2.type === 'link') {
-        // Direct link under L1 panel folder — skip
-        linksSkipped++;
+        // Direct link under L1 panel folder — collect into a "Default" category
+        const { id: catId, isNew: newCat } = findOrCreateCategory('Default', panelId);
+        if (newCat) catsCreated++;
+        createLink(catId, l2.name, l2.url, l2.description || null, l2.tags || null, l2.keyword || null);
+        linksAdded++;
       }
     }
   }
