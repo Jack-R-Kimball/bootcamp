@@ -641,9 +641,20 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     }
     .selection-bar select:focus { border-color: var(--accent); }
 
+    /* ── Collapse chevron (mobile only) ─────────────────── */
+    .cat-chevron {
+      display: none;
+      font-size: 0.6rem;
+      color: var(--muted);
+      flex-shrink: 0;
+      user-select: none;
+    }
+
     /* ── Touch / mobile: hover-only elements become always-on ───────────── */
     @media (hover: none) {
       .link-desc { display: block; }
+      .cat-chevron { display: inline; }
+      .category-header { cursor: pointer; user-select: none; }
     }
 
     /* ── Small screen layout ────────────────────────────────────────────── */

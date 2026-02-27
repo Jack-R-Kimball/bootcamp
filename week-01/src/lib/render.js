@@ -42,10 +42,12 @@ function renderLink(link, panelId) {
 function renderCategory(cat, panelId) {
   return `
     <div class="category" id="cat-${cat.id}" data-id="${cat.id}"
-         x-data="{ renaming: false, menu: false, addingLink: false }"
+         x-data="{ renaming: false, menu: false, addingLink: false, collapsed: false, _mobile: false }"
+         x-init="collapsed = _mobile = window.matchMedia('(hover: none)').matches"
          :class="{ 'cat-menu-open': menu }"
          @click.outside="menu = false">
-      <div class="category-header">
+      <div class="category-header"
+           @click="if (_mobile && !renaming) { menu = false; collapsed = !collapsed; if (collapsed) addingLink = false; }">
         <span class="drag-handle cat-drag-handle" title="Drag to reorder">⠿</span>
         <h2 class="category-title" x-show="!renaming">${esc(cat.name)}</h2>
         <form x-show="renaming" x-cloak class="inline-form cat-rename-form"
@@ -59,6 +61,7 @@ function renderCategory(cat, panelId) {
           <button type="button" class="btn-ghost" @click="renaming = false">cancel</button>
         </form>
         <div class="cat-menu" x-show="!renaming">
+          <span class="cat-chevron" x-text="collapsed ? '▸' : '▾'"></span>
           <button class="cat-menu-btn" @click.stop="menu = !menu" title="Category options">⋮</button>
           <div class="cat-dropdown" x-show="menu" x-cloak>
             <button class="cat-dd-item"
@@ -74,7 +77,7 @@ function renderCategory(cat, panelId) {
           </div>
         </div>
       </div>
-      <div class="links-list">
+      <div class="links-list" x-show="!collapsed">
         ${cat.links.map(l => renderLink(l, panelId)).join('')}
       </div>
       <div class="add-link" x-show="addingLink" x-cloak>
