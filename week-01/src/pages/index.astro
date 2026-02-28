@@ -537,6 +537,51 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     .tab-drop-hover { border-color: var(--link); }
     .tab-drop-hover .panel-tab__btn { color: var(--link); background: rgba(88,166,255,0.12); }
 
+    /* ── Compact fallback clone during drag ─────────────── */
+    .link-item.sortable-fallback .link-url,
+    .link-item.sortable-fallback .link-desc,
+    .link-item.sortable-fallback .link-actions,
+    .link-item.sortable-fallback .link-drag-handle { display: none !important; }
+    .link-item.sortable-fallback .link-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 220px;
+    }
+    .link-item.sortable-fallback {
+      width: auto !important;
+      min-width: 0 !important;
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+    }
+
+    /* ── Drag preview panel (shown mid-drag instead of #categories) ── */
+    #drag-preview {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
+      gap: 0.75rem;
+      align-items: start;
+    }
+    #drag-preview[hidden]  { display: none !important; }
+    /* display:grid overrides the browser's built-in hidden→display:none rule */
+    #categories[hidden]    { display: none !important; }
+
+    /* ── Ghost placeholder shown in target category during drag ─────── */
+    .link-preview-ghost {
+      opacity: 0.45;
+      border: 1px dashed var(--accent);
+      border-radius: var(--r);
+      background: color-mix(in srgb, var(--surface2) 60%, var(--accent) 40%);
+      pointer-events: none;
+    }
+    .link-preview-ghost .link-name {
+      color: var(--accent) !important;
+      font-style: italic;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
 
     /* ── Inline forms ───────────────────────────────────── */
     .inline-form {
@@ -644,6 +689,24 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       .inline-form input { width: 100% !important; }
       .inline-form button { align-self: flex-start; }
     }
+
+    /* ── Error toast ─────────────────────────────────────────────────────── */
+    .error-toast {
+      position: fixed;
+      bottom: 1.25rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--danger);
+      color: #fff;
+      padding: 0.45rem 1.25rem;
+      border-radius: var(--r);
+      font-size: 0.75rem;
+      font-family: inherit;
+      z-index: 9999;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+      white-space: nowrap;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -748,11 +811,57 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         if (this._ctrl) { this._ctrl.abort(); this._ctrl = null; }
         const btn = document.querySelector('.panel-tab--active .panel-tab__btn')
           ?? document.querySelector('.panel-tab__btn');
-        if (btn) btn.click();
+        if (btn) {
+          btn.click();
+        } else {
+          // No panels exist — just clear the categories area directly.
+          const catsEl = document.getElementById('categories');
+          if (catsEl) catsEl.innerHTML = '<p class="empty">No categories yet — add one via the ⚙ menu.</p>';
+        }
       },
     }));
 
     Alpine.start();
+
+    // ── Error recovery ────────────────────────────────────────────────────────
+    // Show a brief toast, then re-fetch the current panel to restore consistency.
+    function showError(msg) {
+      let toast = document.getElementById('_err-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = '_err-toast';
+        toast.className = 'error-toast';
+        document.body.appendChild(toast);
+      }
+      toast.textContent = msg;
+      toast.hidden = false;
+      clearTimeout(toast._hide);
+      toast._hide = setTimeout(() => { toast.hidden = true; }, 4000);
+    }
+
+    function reloadPanel() {
+      const panelId = document.getElementById('active-panel')?.value;
+      if (!panelId) return;
+      fetch(`/api/categories?panel_id=${panelId}`)
+        .then(r => { if (!r.ok) throw new Error(r.status); return r; })
+        .then(r => r.text())
+        .then(html => {
+          const catsEl = document.getElementById('categories');
+          if (!catsEl) return;
+          catsEl.innerHTML = html;
+          htmx.process(catsEl);
+          setFocusedLink(null);
+          clearSelection();
+          initCatLinkSortables();
+        })
+        .catch(e => console.error('Dashboard reload failed:', e));
+    }
+
+    function onFetchError(err) {
+      console.error('Dashboard fetch error:', err);
+      showError('Save failed — reloading\u2026');
+      setTimeout(reloadPanel, 600);
+    }
 
     // Track mouse position with a listener registered at page-load, BEFORE
     // SortableJS adds any listeners. This fires reliably during forceFallback
@@ -782,8 +891,8 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         const h = prev.getBoundingClientRect().height;
         prev.style.minHeight = h + 'px';
         prev.classList.remove('link-focused');
-        requestAnimationFrame(() => { prev.style.minHeight = '0'; });
-        setTimeout(() => { prev.style.minHeight = ''; }, 280);
+        requestAnimationFrame(() => { if (prev.isConnected) prev.style.minHeight = '0'; });
+        setTimeout(() => { if (prev.isConnected) prev.style.minHeight = ''; }, 280);
       }
 
       _focusedLink = el;
@@ -861,11 +970,19 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       if (t) { _mx = t.clientX; _my = t.clientY; }
     }, { passive: true });
 
-    let _panelSortable = null;
-    let _catSortable   = null;
-    let _linkSortables = [];
-    let _dragPoll      = null;
-    let _tabHoverEl    = null;
+    let _panelSortable    = null;
+    let _catSortable      = null;
+    let _linkSortables    = [];
+    let _dragPoll         = null;
+    let _tabHoverEl       = null;
+    let _tabHoverTimer    = null;   // setTimeout for 300ms panel-switch delay
+    let _dragOrigPanel    = null;   // panel ID when drag started
+    let _displayPanelId   = null;   // panel currently shown (may differ mid-drag)
+    let _catDragActive    = false;  // true while a category card is being dragged
+    let _dragGhostName    = '';     // display name for the preview ghost placeholder
+    let _previewGhost     = null;   // DOM element — ghost placed in target category
+    let _previewActiveCat = null;   // which preview category currently holds the ghost
+    let _switchController = null;   // AbortController for in-flight preview fetch
 
     // ── Multi-select state ────────────────────────────────────────────────────
     let _selectedLinks = new Set(); // selected link IDs (numbers)
@@ -880,7 +997,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
-      });
+      }).then(r => { if (!r.ok) throw new Error(r.status); }).catch(onFetchError);
     }
 
     // ── Selection helpers ─────────────────────────────────────────────────────
@@ -917,6 +1034,8 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       if (bar.hidden || !_metaCache) {
         _metaCache = await fetch('/api/meta').then(r => r.json()).catch(() => null);
         if (!_metaCache) return;
+        // Re-check after the async gap — user may have deselected everything.
+        if (_selectedLinks.size === 0) { bar.hidden = true; return; }
 
         const panelDd = document.getElementById('sel-panel-dd');
         if (panelDd) {
@@ -957,21 +1076,20 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       if (!ids.length) return;
       _metaCache = null;
 
-      const r = await fetch('/api/links/bulk-move', {
+      fetch('/api/links/bulk-move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, category_id: categoryId, source_panel_id: sourcePanelId }),
-      });
-      if (r.ok) {
-        const html = await r.text();
+      }).then(r => { if (!r.ok) throw new Error(r.status); return r; })
+        .then(r => r.text()).then(html => {
         const catsEl = document.getElementById('categories');
         if (catsEl) {
           catsEl.innerHTML = html;
           clearSelection();   // clear after DOM swap — old .link-selected elements are gone
           htmx.process(catsEl);
-          initSortable();
+          initCatLinkSortables();
         }
-      }
+      }).catch(onFetchError);
     }
 
     // Selection bar buttons use event delegation so listeners survive #main swaps
@@ -1001,19 +1119,168 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     });
 
     function clearTabHover() {
+      if (_tabHoverTimer) { clearTimeout(_tabHoverTimer); _tabHoverTimer = null; }
       if (_tabHoverEl) { _tabHoverEl.classList.remove('tab-drop-hover'); _tabHoverEl = null; }
     }
 
-    // Poll every 50 ms during a drag: highlight whichever panel tab is under
-    // the cursor so the user gets visual feedback before releasing.
+    // ── Preview ghost helpers ────────────────────────────────────────────────
+    function _ensurePreviewGhost() {
+      if (!_previewGhost) {
+        _previewGhost = document.createElement('div');
+        _previewGhost.className = 'link-item link-preview-ghost';
+        const row  = document.createElement('div');  row.className = 'link-row';
+        const info = document.createElement('div');  info.className = 'link-info';
+        const name = document.createElement('span'); name.className = 'link-name';
+        name.textContent = _dragGhostName;
+        info.appendChild(name); row.appendChild(info); _previewGhost.appendChild(row);
+      }
+      return _previewGhost;
+    }
+
+    function _placePreviewGhost(catEl) {
+      if (_previewActiveCat === catEl) return;
+      const ghost = _ensurePreviewGhost();
+      const list  = catEl.querySelector('.links-list');
+      if (!list) return;
+      list.insertBefore(ghost, list.firstChild);
+      _previewActiveCat = catEl;
+    }
+
+    function _hidePreviewGhost() {
+      if (_previewGhost?.parentNode) _previewGhost.parentNode.removeChild(_previewGhost);
+      _previewActiveCat = null;
+    }
+
+    // Restore original categories display, discard preview state.
+    function _clearPreview() {
+      _hidePreviewGhost();
+      _previewGhost = null;
+      if (_switchController) { _switchController.abort(); _switchController = null; }
+      const preview = document.getElementById('drag-preview');
+      const catsEl  = document.getElementById('categories');
+      if (preview) { preview.hidden = true; preview.innerHTML = ''; }
+      if (catsEl)  catsEl.hidden = false;
+    }
+
+    // Revert Alpine active tab to original panel (after a cancelled cross-panel drag).
+    // #categories already shows the original panel — no fetch needed.
+    function _revertPanel() {
+      _displayPanelId = _dragOrigPanel;
+      const panelBar = document.querySelector('.panel-bar');
+      if (panelBar) Alpine.$data(panelBar).active = _dragOrigPanel;
+      const activeEl = document.getElementById('active-panel');
+      if (activeEl) activeEl.value = String(_dragOrigPanel);
+      clearSelection();
+    }
+
+    // Switch to panelId.  During drag: fetch into #drag-preview, hide #categories.
+    // After drag (_dragPoll === null): normal HTMX swap of #categories.
+    async function _switchToPanel(panelId) {
+      _displayPanelId = panelId;
+      const panelBar = document.querySelector('.panel-bar');
+      if (panelBar) Alpine.$data(panelBar).active = panelId;
+
+      if (!_dragPoll) {
+        // Set the hidden panel input immediately (don't wait for Alpine's async
+        // :value="active" flush) so the next drag's onStart reads the right panel.
+        const activeEl = document.getElementById('active-panel');
+        if (activeEl) activeEl.value = String(panelId);
+
+        // Tear down sortables now so no drag can start against stale DOM while
+        // the fetch is in-flight.
+        if (_catSortable) { _catSortable.destroy(); _catSortable = null; }
+        _linkSortables.forEach(s => { try { s.destroy(); } catch {} });
+        _linkSortables = [];
+        document.querySelectorAll('.links-list').forEach(l => delete l._si);
+
+        fetch(`/api/categories?panel_id=${panelId}`)
+          .then(r => { if (!r.ok) throw new Error(r.status); return r; })
+          .then(r => r.text())
+          .then(html => {
+            const catsEl = document.getElementById('categories');
+            if (!catsEl) return;
+            catsEl.innerHTML = html;
+            htmx.process(catsEl);
+            setFocusedLink(null);
+            clearSelection();
+            initCatLinkSortables();
+          })
+          .catch(onFetchError);
+        return;
+      }
+
+      // During drag: populate the preview div instead of touching #categories.
+      if (_switchController) _switchController.abort();
+      _switchController = new AbortController();
+      try {
+        const r = await fetch(`/api/categories?panel_id=${panelId}`, { signal: _switchController.signal });
+        if (!r.ok) { _switchController = null; return; }
+        const html = await r.text();
+        _switchController = null;
+
+        const preview = document.getElementById('drag-preview');
+        const catsEl  = document.getElementById('categories');
+        if (!preview || !catsEl) return;
+
+        _hidePreviewGhost();
+        _previewActiveCat = null;
+        preview.innerHTML = html;
+        catsEl.hidden     = true;
+        preview.hidden    = false;
+
+        // Place ghost at current cursor position
+        const el  = document.elementFromPoint(_mx, _my);
+        const cat = el?.closest('#drag-preview .category');
+        if (cat) {
+          _placePreviewGhost(cat);
+        } else {
+          const firstCat = preview.querySelector('.category');
+          if (firstCat) _placePreviewGhost(firstCat);
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('Preview fetch failed:', e);
+        _switchController = null;
+      }
+    }
+
+    // Poll every 50ms during a drag: update tab highlight, ghost position, and
+    // (for link drags only) start the 300ms timer to switch panels.
     function checkTabHover() {
-      const el  = document.elementFromPoint(_mx, _my);
-      const tab = el?.closest('.panel-tab');
+      const el         = document.elementFromPoint(_mx, _my);
+      const tab        = el?.closest('.panel-tab');
+      const preview    = document.getElementById('drag-preview');
+      const previewCat = (preview && !preview.hidden) ? el?.closest('#drag-preview .category') : null;
+
+      // Update ghost position whenever preview is visible.
+      if (preview && !preview.hidden) {
+        if (tab) {
+          const firstCat = preview.querySelector('.category');
+          if (firstCat) _placePreviewGhost(firstCat);
+        } else if (previewCat) {
+          _placePreviewGhost(previewCat);
+        } else {
+          _hidePreviewGhost();
+        }
+      }
+
+      // Tab highlight + panel-switch timer (skip timer for category drag).
       if (!tab) { clearTabHover(); return; }
       if (_tabHoverEl === tab) return;
       clearTabHover();
       _tabHoverEl = tab;
       tab.classList.add('tab-drop-hover');
+
+      if (_catDragActive) return;  // highlight only, no panel switch
+
+      const btn = tab.querySelector('.panel-tab__btn');
+      const m   = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
+      if (!m) return;
+      const targetPanelId = Number(m[1]);
+      if (targetPanelId === _displayPanelId) return;
+      _tabHoverTimer = setTimeout(() => {
+        _tabHoverTimer = null;
+        _switchToPanel(targetPanelId);
+      }, 300);
     }
 
     function addLinkSortables() {
@@ -1025,96 +1292,139 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
           animation: 150,
           forceFallback: true,
           fallbackTolerance: 3,
-          onStart() { _dragPoll = setInterval(checkTabHover, 50); },
+          onStart(evt) {
+            _dragOrigPanel  = Number(document.getElementById('active-panel')?.value);
+            _displayPanelId = _dragOrigPanel;
+            const n = _selectedLinks.has(Number(evt.item.dataset.id)) ? _selectedLinks.size : 1;
+            _dragGhostName  = n > 1
+              ? `${n} items`
+              : (evt.item.querySelector('.link-name')?.textContent?.trim() ?? 'link');
+            document.body.classList.add('dragging');
+            _dragPoll = setInterval(checkTabHover, 50);
+          },
           onEnd(evt) {
             clearInterval(_dragPoll); _dragPoll = null;
+            clearTabHover();
+            document.body.classList.remove('dragging');
 
             const draggedId   = Number(evt.item.dataset.id);
             const inSelection = _selectedLinks.has(draggedId);
+            const moveIds     = (inSelection && _selectedLinks.size > 1)
+              ? [..._selectedLinks] : [draggedId];
 
-            const under    = document.elementFromPoint(_mx, _my);
-            const panelTab = under?.closest('.panel-tab') ?? _tabHoverEl;
-            clearTabHover();
+            // Capture targets BEFORE clearing preview (preview is still in DOM here).
+            const under      = document.elementFromPoint(_mx, _my);
+            const panelTab   = under?.closest('.panel-tab');
+            const previewCat = under?.closest('#drag-preview .category');
 
+            // Determine destination panel.
+            // Priority: (1) direct drop on a panel tab, (2) hover-switched preview panel.
+            // The 300ms delay only controls when the preview appears — a drop on a tab
+            // always targets that panel, regardless of whether the preview loaded yet.
+            let tabTargetPanelId = null;
             if (panelTab) {
-              // Dropped on a panel tab → move to Default category, then switch panel.
               const btn = panelTab.querySelector('.panel-tab__btn');
-              const m = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
-              if (!m) { clearSelection(); return; }
-              const targetPanelId = Number(m[1]);
-              fetch('/api/links/move-to-panel', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ link_id: draggedId, panel_id: targetPanelId }),
-              }).then(r => {
-                if (!r.ok) return;
-                // Switch to the target panel: update Alpine active state + HTMX swap.
-                const panelBar = document.querySelector('.panel-bar');
-                if (panelBar) Alpine.$data(panelBar).active = targetPanelId;
-                htmx.ajax('GET', `/api/categories?panel_id=${targetPanelId}`, {
-                  target: '#categories', swap: 'innerHTML',
-                });
-              });
+              const m   = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
+              if (m) tabTargetPanelId = Number(m[1]);
+            }
+            const destPanel  = tabTargetPanelId ?? _displayPanelId;
+            const crossPanel = destPanel !== null && destPanel !== _dragOrigPanel;
+
+            _clearPreview();  // restore #categories, discard preview
+
+            if (crossPanel) {
               clearSelection();
+              if (previewCat) {
+                // Dropped on a preview category → top of that specific category
+                fetch('/api/links/bulk-move', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    ids: moveIds,
+                    category_id: Number(previewCat.dataset.id),
+                    source_panel_id: _dragOrigPanel,
+                  }),
+                }).then(r => { if (!r.ok) throw new Error(r.status); })
+                  .then(() => _switchToPanel(destPanel)).catch(onFetchError);
+
+              } else if (tabTargetPanelId !== null) {
+                // Direct panel tab drop → Default/first category (single atomic request)
+                fetch('/api/links/bulk-move-to-panel', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ids: moveIds, panel_id: destPanel, source_panel_id: _dragOrigPanel }),
+                }).then(r => { if (!r.ok) throw new Error(r.status); })
+                  .then(() => _switchToPanel(destPanel)).catch(onFetchError);
+
+              } else {
+                // Dropped in void after panel preview → cancel, revert to original panel
+                _revertPanel();
+              }
               return;
             }
 
-            // Normal in-panel sort / cross-category move.
-            const catEl = evt.item.closest('.category');
-            if (!catEl?.isConnected) { clearSelection(); return; }
-            const linksList  = catEl.querySelector('.links-list');
+            // ── Same panel ────────────────────────────────────────────────────
+            const catEl = evt.item.isConnected ? evt.item.closest('.category') : null;
+            if (!catEl) { clearSelection(); return; }
+
             const categoryId = Number(catEl.dataset.id);
 
-            // If dragged item was part of a multi-selection, bulk-move all
-            // selected items to the drop target category (Finder-style behavior).
             if (inSelection && _selectedLinks.size > 1) {
-              const sourcePanelId = Number(document.getElementById('active-panel')?.value);
               const allIds = [..._selectedLinks];
               clearSelection();
               fetch('/api/links/bulk-move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: allIds, category_id: categoryId, source_panel_id: sourcePanelId }),
-              }).then(r => r.text()).then(html => {
+                body: JSON.stringify({ ids: allIds, category_id: categoryId, source_panel_id: _dragOrigPanel }),
+              }).then(r => { if (!r.ok) throw new Error(r.status); return r; })
+                .then(r => r.text()).then(html => {
                 const catsEl = document.getElementById('categories');
-                if (catsEl) { catsEl.innerHTML = html; htmx.process(catsEl); initSortable(); }
-              });
+                if (catsEl) { catsEl.innerHTML = html; htmx.process(catsEl); initCatLinkSortables(); }
+              }).catch(onFetchError);
               return;
             }
 
+            // Single link, same panel: SortableJS already placed it — save the order
             clearSelection();
+            const linksList = catEl.querySelector('.links-list');
             const ids = [...linksList.querySelectorAll(':scope > .link-item')]
               .map(el => Number(el.dataset.id));
             fetch('/api/links/reorder', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ids, category_id: categoryId }),
-            });
+            }).then(r => { if (!r.ok) throw new Error(r.status); }).catch(onFetchError);
           },
         });
         _linkSortables.push(list._si);
       });
     }
 
-    function initSortable() {
+    // ── Sortable initialisation ───────────────────────────────────────────────
+    // Panel-tab drag is separate from category/link drag: the panel bar is inside
+    // #main, which is only replaced when panels are created or deleted.  Keeping
+    // it separate avoids unnecessary destroy/re-create on every #categories swap.
+
+    function initPanelSortable() {
       if (_panelSortable) { _panelSortable.destroy(); _panelSortable = null; }
       const panelTabsEl = document.querySelector('.panel-tabs');
-      if (panelTabsEl) {
-        _panelSortable = Sortable.create(panelTabsEl, {
-          handle: '.panel-drag-grip',
-          animation: 150,
-          onEnd() {
-            const ids = [...panelTabsEl.querySelectorAll(':scope > .panel-tab')]
-              .map(el => Number(el.dataset.id));
-            fetch('/api/panels/reorder', {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ids }),
-            });
-          },
-        });
-      }
+      if (!panelTabsEl) return;
+      _panelSortable = Sortable.create(panelTabsEl, {
+        handle: '.panel-drag-grip',
+        animation: 150,
+        onEnd() {
+          const ids = [...panelTabsEl.querySelectorAll(':scope > .panel-tab')]
+            .map(el => Number(el.dataset.id));
+          fetch('/api/panels/reorder', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+          }).then(r => { if (!r.ok) throw new Error(r.status); }).catch(onFetchError);
+        },
+      });
+    }
 
+    function initCatLinkSortables() {
       if (_catSortable) { _catSortable.destroy(); _catSortable = null; }
       _linkSortables.forEach(s => { try { s.destroy(); } catch {} });
       _linkSortables = [];
@@ -1127,38 +1437,43 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
           animation: 150,
           forceFallback: true,
           fallbackTolerance: 3,
-          onStart() { _dragPoll = setInterval(checkTabHover, 50); },
+          onStart() {
+            _catDragActive = true;
+            _dragPoll = setInterval(checkTabHover, 50);
+          },
           onEnd(evt) {
             clearInterval(_dragPoll); _dragPoll = null;
+            clearTabHover();
+            _catDragActive = false;
 
             const under    = document.elementFromPoint(_mx, _my);
-            const panelTab = under?.closest('.panel-tab') ?? _tabHoverEl;
-            clearTabHover();
+            const panelTab = under?.closest('.panel-tab');
 
             if (panelTab) {
               // Dropped on a panel tab — move whole category there.
               const btn = panelTab.querySelector('.panel-tab__btn');
               const m   = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
               if (!m) { saveCatOrder(); return; }
-              const sourcePanelId = Number(
-                document.getElementById('active-panel')?.value
-              );
+              const sourcePanelId = Number(document.getElementById('active-panel')?.value);
               fetch('/api/categories/move-to-panel', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  category_id:    Number(evt.item.dataset.id),
-                  panel_id:       Number(m[1]),
+                  category_id:     Number(evt.item.dataset.id),
+                  panel_id:        Number(m[1]),
                   source_panel_id: sourcePanelId,
                 }),
-              }).then(r => r.text()).then(html => {
-                document.getElementById('categories').innerHTML = html;
-                htmx.process(document.getElementById('categories'));
-                initSortable();
-              });
+              }).then(r => { if (!r.ok) throw new Error(r.status); return r; })
+                .then(r => r.text()).then(html => {
+                const el = document.getElementById('categories');
+                if (!el) return;
+                el.innerHTML = html;
+                htmx.process(el);
+                initCatLinkSortables();
+              }).catch(onFetchError);
               return;
             }
-            saveCatOrder(); // normal reorder
+            saveCatOrder(); // normal same-panel reorder
           },
         });
       }
@@ -1166,7 +1481,13 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       initSelectionBar();
     }
 
-    initSortable(); // also calls initSelectionBar() at the end
+    // Convenience wrapper: called on page load and after #main swaps.
+    function initSortable() {
+      initPanelSortable();
+      initCatLinkSortables();
+    }
+
+    initSortable();
 
     // Press 1–9 to switch panels; ignored while typing in a form field.
     document.addEventListener('keydown', e => {
@@ -1179,13 +1500,29 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       }
     });
 
+    // After a #categories swap: re-init category/link sortables only (panel bar
+    // is unaffected).  After a #main swap (panel create/delete): re-init both.
     document.addEventListener('htmx:afterSwap', (evt) => {
       const id = evt.target.id;
-      if (id === 'categories' || id === 'main') {
-        setFocusedLink(null); clearSelection(); initSortable();
-        // Clear search input when HTMX replaces panel content
+      if (id === 'categories') {
+        setFocusedLink(null); clearSelection(); initCatLinkSortables();
         const sf = document.querySelector('.search-form');
         if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
+      } else if (id === 'main') {
+        setFocusedLink(null); clearSelection(); initSortable();
+        const sf = document.querySelector('.search-form');
+        if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
+      }
+    });
+
+    // Clean up drag state if the page is hidden mid-drag (tab switch, OS lock, etc.)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && _dragPoll) {
+        clearInterval(_dragPoll); _dragPoll = null;
+        clearTabHover();
+        _clearPreview();
+        _revertPanel();
+        document.body.classList.remove('dragging');
       }
     });
   </script>

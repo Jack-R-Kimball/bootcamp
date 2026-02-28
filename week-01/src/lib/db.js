@@ -32,33 +32,29 @@ db.exec(`
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
-try {
-  db.exec(`ALTER TABLE panels ADD COLUMN position INTEGER DEFAULT 0`);
-} catch { /* already exists */ }
-try {
-  db.exec(`ALTER TABLE categories ADD COLUMN panel_id INTEGER REFERENCES panels(id) ON DELETE CASCADE`);
-} catch { /* already exists */ }
-try {
-  db.exec(`ALTER TABLE categories ADD COLUMN position INTEGER DEFAULT 0`);
-} catch { /* already exists */ }
-try {
-  db.exec(`ALTER TABLE links ADD COLUMN position INTEGER DEFAULT 0`);
-} catch { /* already exists */ }
-try {
-  db.exec(`ALTER TABLE links ADD COLUMN description TEXT`);
-} catch { /* already exists */ }
-try {
-  db.exec(`ALTER TABLE links ADD COLUMN tags TEXT`);
-} catch { /* already exists */ }
-try {
-  db.exec(`ALTER TABLE links ADD COLUMN keyword TEXT`);
-} catch { /* already exists */ }
+// Each migration is idempotent: swallow only "duplicate column name" errors so
+// real failures (disk full, corruption, syntax errors) still surface.
+function migrate(sql) {
+  try {
+    db.exec(sql);
+  } catch (e) {
+    if (!e.message?.includes('duplicate column name')) throw e;
+  }
+}
+
+migrate(`ALTER TABLE panels ADD COLUMN position INTEGER DEFAULT 0`);
+migrate(`ALTER TABLE categories ADD COLUMN panel_id INTEGER REFERENCES panels(id) ON DELETE CASCADE`);
+migrate(`ALTER TABLE categories ADD COLUMN position INTEGER DEFAULT 0`);
+migrate(`ALTER TABLE links ADD COLUMN position INTEGER DEFAULT 0`);
+migrate(`ALTER TABLE links ADD COLUMN description TEXT`);
+migrate(`ALTER TABLE links ADD COLUMN tags TEXT`);
+migrate(`ALTER TABLE links ADD COLUMN keyword TEXT`);
 
 // ── Seed default panel if none exists ─────────────────────────────────────────
 const seedDefault = db.transaction(() => {
   const count = db.prepare('SELECT COUNT(*) as n FROM panels').get().n;
   if (count === 0) {
-    const result = db.prepare(`INSERT INTO panels (name) VALUES ('Default')`).run();
+    const result = db.prepare(`INSERT INTO panels (name, position) VALUES ('Default', 0)`).run();
     db.prepare('UPDATE categories SET panel_id = ? WHERE panel_id IS NULL').run(result.lastInsertRowid);
   }
 });
@@ -75,7 +71,8 @@ export function reorderPanels(ids) {
 }
 
 export function createPanel(name) {
-  return db.prepare('INSERT INTO panels (name) VALUES (?)').run(name);
+  const { maxPos } = db.prepare('SELECT COALESCE(MAX(position), -1) AS maxPos FROM panels').get();
+  return db.prepare('INSERT INTO panels (name, position) VALUES (?, ?)').run(name, maxPos + 1);
 }
 
 export function deletePanel(id) {
@@ -93,7 +90,10 @@ export function getCategories(panelId) {
 }
 
 export function createCategory(name, panelId) {
-  return db.prepare('INSERT INTO categories (name, panel_id) VALUES (?, ?)').run(name, panelId);
+  const { maxPos } = db.prepare(
+    'SELECT COALESCE(MAX(position), -1) AS maxPos FROM categories WHERE panel_id = ?'
+  ).get(panelId);
+  return db.prepare('INSERT INTO categories (name, panel_id, position) VALUES (?, ?, ?)').run(name, panelId, maxPos + 1);
 }
 
 export function updateCategory(id, name) {
@@ -144,10 +144,21 @@ export function searchLinks(query, panelId = null, caseSensitive = false) {
   return db.prepare(sql).all(...params);
 }
 
-// ── Bulk link move ────────────────────────────────────────────────────────────
+// ── Bulk link move (inserts at top of target category, repacks positions) ─────
+// After moving, all positions in the category are clean sequential integers.
 export function bulkMoveLinks(ids, categoryId) {
-  const stmt = db.prepare('UPDATE links SET category_id = ? WHERE id = ?');
-  db.transaction(() => ids.forEach(id => stmt.run(categoryId, id)))();
+  db.transaction(() => {
+    const ph = ids.map(() => '?').join(',');
+    // Remaining links in the category (not being moved), in their current order
+    const remaining = db.prepare(
+      `SELECT id FROM links WHERE category_id = ? AND id NOT IN (${ph}) ORDER BY position, id`
+    ).all(categoryId, ...ids);
+    const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
+    // Moved links occupy positions 0..n-1 (top of list)
+    ids.forEach((id, i) => stmt.run(categoryId, i, id));
+    // Remaining links follow at n, n+1, ...
+    remaining.forEach((l, i) => stmt.run(categoryId, ids.length + i, l.id));
+  })();
 }
 
 // ── Move category to a different panel ────────────────────────────────────────
@@ -155,27 +166,67 @@ export function moveCategoryToPanel(catId, panelId) {
   db.prepare('UPDATE categories SET panel_id = ? WHERE id = ?').run(panelId, catId);
 }
 
-// ── Cross-panel link move ─────────────────────────────────────────────────────
+// ── Cross-panel link move (single link) ───────────────────────────────────────
+// Finds or creates a "Default" category in the target panel, inserts link at
+// top, and repacks all positions in that category.
 export function moveLinkToPanel(linkId, panelId) {
-  // Prefer a category named "Default"; fall back to first available; create if none.
-  let cat = db.prepare(
-    `SELECT id FROM categories WHERE panel_id = ? AND name = 'Default' ORDER BY position, id LIMIT 1`
-  ).get(panelId);
-  if (!cat) {
-    cat = db.prepare(
-      'SELECT id FROM categories WHERE panel_id = ? ORDER BY position, id LIMIT 1'
+  return db.transaction(() => {
+    let cat = db.prepare(
+      `SELECT id FROM categories WHERE panel_id = ? AND name = 'Default' ORDER BY position, id LIMIT 1`
     ).get(panelId);
-  }
-  if (!cat) {
-    const r = db.prepare('INSERT INTO categories (name, panel_id) VALUES (?, ?)').run('Default', panelId);
-    cat = { id: r.lastInsertRowid };
-  }
-  const maxPos = db.prepare(
-    'SELECT COALESCE(MAX(position), -1) AS m FROM links WHERE category_id = ?'
-  ).get(cat.id).m;
-  db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?')
-    .run(cat.id, maxPos + 1, linkId);
-  return cat.id;
+    if (!cat) {
+      cat = db.prepare(
+        'SELECT id FROM categories WHERE panel_id = ? ORDER BY position, id LIMIT 1'
+      ).get(panelId);
+    }
+    if (!cat) {
+      const { maxPos } = db.prepare(
+        'SELECT COALESCE(MAX(position), -1) AS maxPos FROM categories WHERE panel_id = ?'
+      ).get(panelId);
+      const r = db.prepare('INSERT INTO categories (name, panel_id, position) VALUES (?, ?, ?)').run('Default', panelId, maxPos + 1);
+      cat = { id: r.lastInsertRowid };
+    }
+    // Remaining links in target category, excluding the one being moved
+    const remaining = db.prepare(
+      'SELECT id FROM links WHERE category_id = ? AND id != ? ORDER BY position, id'
+    ).all(cat.id, linkId);
+    db.prepare('UPDATE links SET category_id = ?, position = 0 WHERE id = ?').run(cat.id, linkId);
+    const stmt = db.prepare('UPDATE links SET position = ? WHERE id = ?');
+    remaining.forEach((l, i) => stmt.run(i + 1, l.id));
+    return cat.id;
+  })();
+}
+
+// ── Cross-panel bulk move (multiple links → target panel) ─────────────────────
+// Atomically finds/creates the Default category, moves all links there, and
+// repacks positions. Replaces N parallel move-to-panel calls, eliminating
+// the race condition that could create duplicate "Default" categories.
+export function bulkMoveLinksToPanel(ids, panelId) {
+  return db.transaction(() => {
+    let cat = db.prepare(
+      `SELECT id FROM categories WHERE panel_id = ? AND name = 'Default' ORDER BY position, id LIMIT 1`
+    ).get(panelId);
+    if (!cat) {
+      cat = db.prepare(
+        'SELECT id FROM categories WHERE panel_id = ? ORDER BY position, id LIMIT 1'
+      ).get(panelId);
+    }
+    if (!cat) {
+      const { maxPos } = db.prepare(
+        'SELECT COALESCE(MAX(position), -1) AS maxPos FROM categories WHERE panel_id = ?'
+      ).get(panelId);
+      const r = db.prepare('INSERT INTO categories (name, panel_id, position) VALUES (?, ?, ?)').run('Default', panelId, maxPos + 1);
+      cat = { id: r.lastInsertRowid };
+    }
+    const ph = ids.map(() => '?').join(',');
+    const remaining = db.prepare(
+      `SELECT id FROM links WHERE category_id = ? AND id NOT IN (${ph}) ORDER BY position, id`
+    ).all(cat.id, ...ids);
+    const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
+    ids.forEach((id, i) => stmt.run(cat.id, i, id));
+    remaining.forEach((l, i) => stmt.run(cat.id, ids.length + i, l.id));
+    return cat.id;
+  })();
 }
 
 // ── Reordering ────────────────────────────────────────────────────────────────
@@ -184,22 +235,28 @@ export function reorderCategories(ids) {
   db.transaction(() => ids.forEach((id, i) => stmt.run(i, id)))();
 }
 
+// Reorder links within a category. Only updates position; category_id is
+// validated via the WHERE clause so stray IDs are silently ignored.
 export function reorderLinks(ids, categoryId) {
-  const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
-  db.transaction(() => ids.forEach((id, i) => stmt.run(categoryId, i, id)))();
+  const stmt = db.prepare('UPDATE links SET position = ? WHERE id = ? AND category_id = ?');
+  db.transaction(() => ids.forEach((id, i) => stmt.run(i, id, categoryId)))();
 }
 
 // ── Find-or-create helpers (used by smart import) ─────────────────────────────
 export function findOrCreatePanel(name) {
   const existing = db.prepare('SELECT id FROM panels WHERE name = ?').get(name);
   if (existing) return { id: existing.id, isNew: false };
-  const r = db.prepare('INSERT INTO panels (name) VALUES (?)').run(name);
+  const { maxPos } = db.prepare('SELECT COALESCE(MAX(position), -1) AS maxPos FROM panels').get();
+  const r = db.prepare('INSERT INTO panels (name, position) VALUES (?, ?)').run(name, maxPos + 1);
   return { id: r.lastInsertRowid, isNew: true };
 }
 
 export function findOrCreateCategory(name, panelId) {
   const existing = db.prepare('SELECT id FROM categories WHERE name = ? AND panel_id = ?').get(name, panelId);
   if (existing) return { id: existing.id, isNew: false };
-  const r = db.prepare('INSERT INTO categories (name, panel_id) VALUES (?, ?)').run(name, panelId);
+  const { maxPos } = db.prepare(
+    'SELECT COALESCE(MAX(position), -1) AS maxPos FROM categories WHERE panel_id = ?'
+  ).get(panelId);
+  const r = db.prepare('INSERT INTO categories (name, panel_id, position) VALUES (?, ?, ?)').run(name, panelId, maxPos + 1);
   return { id: r.lastInsertRowid, isNew: true };
 }

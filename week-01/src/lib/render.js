@@ -3,7 +3,8 @@ function esc(v) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function renderLink(link, panelId) {
@@ -34,7 +35,7 @@ function renderLink(link, panelId) {
         <input name="url" value="${esc(link.url)}" required>
         <input name="description" value="${esc(link.description ?? '')}" placeholder="Description (optional)">
         <button type="submit" class="btn-primary">save</button>
-        <button type="button" class="btn-ghost" @click="editing = false">cancel</button>
+        <button type="button" class="btn-ghost" @click="editing = false; menu = false">cancel</button>
       </form>
     </div>`;
 }
@@ -202,5 +203,6 @@ export function renderMain(panels, activePanelId, categories) {
     ${renderSelectionBar()}
     <div id="categories">
       ${renderCategories(categories, activePanelId)}
-    </div>`;
+    </div>
+    <div id="drag-preview" hidden aria-hidden="true"></div>`;
 }
