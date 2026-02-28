@@ -157,9 +157,15 @@ export function moveCategoryToPanel(catId, panelId) {
 
 // ── Cross-panel link move ─────────────────────────────────────────────────────
 export function moveLinkToPanel(linkId, panelId) {
-  const cat = db.prepare(
-    'SELECT id FROM categories WHERE panel_id = ? ORDER BY position, id LIMIT 1'
+  // Prefer a category named "Default"; fall back to the first available one.
+  let cat = db.prepare(
+    `SELECT id FROM categories WHERE panel_id = ? AND name = 'Default' ORDER BY position, id LIMIT 1`
   ).get(panelId);
+  if (!cat) {
+    cat = db.prepare(
+      'SELECT id FROM categories WHERE panel_id = ? ORDER BY position, id LIMIT 1'
+    ).get(panelId);
+  }
   if (!cat) return null;
   const maxPos = db.prepare(
     'SELECT COALESCE(MAX(position), -1) AS m FROM links WHERE category_id = ?'
