@@ -1037,15 +1037,24 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
             clearTabHover();
 
             if (panelTab) {
-              // Dropped on a panel tab → move to that panel's Default category.
+              // Dropped on a panel tab → move to Default category, then switch panel.
               const btn = panelTab.querySelector('.panel-tab__btn');
               const m = (btn?.getAttribute('hx-get') || '').match(/panel_id=(\d+)/);
               if (!m) { clearSelection(); return; }
+              const targetPanelId = Number(m[1]);
               fetch('/api/links/move-to-panel', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ link_id: draggedId, panel_id: Number(m[1]) }),
-              }).then(r => { if (r.ok) btn.click(); });
+                body: JSON.stringify({ link_id: draggedId, panel_id: targetPanelId }),
+              }).then(r => {
+                if (!r.ok) return;
+                // Switch to the target panel: update Alpine active state + HTMX swap.
+                const panelBar = document.querySelector('.panel-bar');
+                if (panelBar) Alpine.$data(panelBar).active = targetPanelId;
+                htmx.ajax('GET', `/api/categories?panel_id=${targetPanelId}`, {
+                  target: '#categories', swap: 'innerHTML',
+                });
+              });
               clearSelection();
               return;
             }
