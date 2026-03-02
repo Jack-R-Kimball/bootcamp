@@ -1,0 +1,13 @@
+services:
+  dashboard:
+    image: ghcr.io/jack-r-kimball/link-dashboard:latest
+    # build: .   # uncomment to build locally instead of pulling
+    ports:
+      - "4321:4321"
+    volumes:
+      - dashboard-data:/data
+    restart: unless-stopped
+
+volumes:
+  dashboard-data:
+    name: dashboard-data

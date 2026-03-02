@@ -1,0 +1,31 @@
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM node:22-alpine AS builder
+
+# better-sqlite3 is a native module; build tools required at compile time only
+RUN apk add --no-cache python3 make g++
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copy built app and compiled native modules from builder
+COPY --from=builder /app/dist        ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+ENV HOST=0.0.0.0
+ENV PORT=4321
+ENV DASHBOARD_DATA_DIR=/data
+
+EXPOSE 4321
+
+CMD ["node", "dist/server/entry.mjs"]

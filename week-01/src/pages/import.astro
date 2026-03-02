@@ -293,8 +293,12 @@ const panelData = panels.map(p => ({
     </div>
 
     <div class="drop-zone" id="drop-zone">
-      <p>Drag and drop your Firefox bookmarks HTML file here</p>
-      <p class="hint">Firefox: Bookmarks → Manage Bookmarks → Import and Backup → Export Bookmarks to HTML</p>
+      <p>Drag and drop your browser bookmarks HTML file here</p>
+      <p class="hint">
+        Firefox: Bookmarks → Manage Bookmarks → Import and Backup → Export Bookmarks to HTML<br>
+        Chrome / Edge: Bookmarks → Bookmark Manager → ⋮ → Export bookmarks<br>
+        Safari: File → Export → Bookmarks
+      </p>
       <button class="choose-btn" id="choose-btn">Choose file</button>
       <input type="file" id="file-input" accept=".html,.htm">
     </div>
