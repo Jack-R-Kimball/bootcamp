@@ -9,7 +9,12 @@ export async function POST({ request }) {
   if (!category_id || !name || !url) return new Response('Missing fields', { status: 400 });
 
   const description = data.get('description')?.trim() || null;
-  const panelId = Number(data.get('panel_id')) || getPanelIdForCategory(category_id);
+  // panel_id is sent as a hidden field by the add-link form so we can re-render
+  // the correct panel's categories.  Fall back to a DB lookup in case it's absent.
+  // Use > 0 rather than || so a hypothetical panel_id="0" never silently uses the
+  // fallback (panel IDs are always ≥ 1 from autoincrement).
+  const rawPanelId = Number(data.get('panel_id'));
+  const panelId = rawPanelId > 0 ? rawPanelId : getPanelIdForCategory(category_id);
   createLink(category_id, name, url, description);
   return new Response(renderCategories(getCategories(panelId), panelId), {
     headers: { 'Content-Type': 'text/html' },

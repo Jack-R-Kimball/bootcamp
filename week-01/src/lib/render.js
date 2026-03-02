@@ -102,6 +102,9 @@ function renderCategory(cat, panelId) {
     </div>`;
 }
 
+// showPanel: pass true when results span multiple panels (i.e. "all panels" search)
+// so the panel name is prepended to the category breadcrumb.  Pass false (default)
+// when results are already scoped to one panel.
 export function renderSearchResults(results, showPanel = false) {
   if (!results.length) {
     return '<div class="sr-wrapper"><p class="empty">No matches found.</p></div>';
