@@ -167,6 +167,14 @@ export function reorderLinks(ids, categoryId) {
   db.transaction(() => ids.forEach((id, i) => stmt.run(categoryId, i, id)))();
 }
 
+// Bulk-move links to a different category (possibly on a different panel).
+export function bulkMoveLinks(ids, categoryId) {
+  const cat = db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId);
+  if (!cat) throw new Error(`Category ${categoryId} not found`);
+  const stmt = db.prepare('UPDATE links SET category_id = ? WHERE id = ?');
+  db.transaction(() => ids.forEach(id => stmt.run(categoryId, id)))();
+}
+
 // ── Find-or-create helpers (used by smart import) ─────────────────────────────
 export function findOrCreatePanel(name) {
   const existing = db.prepare('SELECT id FROM panels WHERE name = ?').get(name);

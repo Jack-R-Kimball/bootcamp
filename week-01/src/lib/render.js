@@ -198,9 +198,22 @@ function renderPanelBar(panels, activePanelId) {
     </div>`;
 }
 
+function renderSelectionBar() {
+  return `
+    <div id="selection-bar" class="selection-bar" hidden>
+      <span id="sel-count" class="sel-count"></span>
+      <span class="sel-sep">· move to:</span>
+      <select id="sel-panel-dd" class="sel-select"></select>
+      <select id="sel-cat-dd"   class="sel-select"></select>
+      <button id="sel-move"  class="btn-primary">move</button>
+      <button id="sel-clear" class="btn-ghost">✕</button>
+    </div>`;
+}
+
 export function renderMain(panels, activePanelId, categories) {
   return `
     ${renderPanelBar(panels, activePanelId)}
+    ${renderSelectionBar()}
     <div id="categories">
       ${renderCategories(categories, activePanelId)}
     </div>`;

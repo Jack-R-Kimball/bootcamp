@@ -419,6 +419,36 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       border-radius: var(--r);
       transition: background 150ms ease, box-shadow 150ms ease, min-height 220ms ease;
     }
+    /* ── Multi-select ───────────────────────────────────── */
+    .link-item.link-selected {
+      background: color-mix(in srgb, var(--surface2) 60%, var(--accent) 40%);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .selection-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      margin-bottom: 0.75rem;
+      background: var(--surface);
+      border: 1px solid color-mix(in srgb, var(--border) 40%, var(--accent) 60%);
+      border-radius: var(--r);
+      font-size: 0.6875rem;
+    }
+    .selection-bar[hidden] { display: none !important; }
+    .sel-count { color: var(--accent); font-weight: 700; }
+    .sel-sep   { color: var(--muted); white-space: nowrap; }
+    .sel-select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 0.15rem 0.35rem;
+      font-family: inherit;
+      font-size: 0.6875rem;
+    }
+    .sel-select:focus { outline: none; border-color: var(--accent); }
+
     /* .link-focused is set by JS so layout-shift skipping is prevented */
     .link-item.link-focused {
       z-index: 5;
@@ -464,8 +494,8 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       flex-direction: column;
       gap: 0.25rem;
       position: absolute;
-      left: 2rem;
-      right: -2rem;
+      left: 4rem;
+      right: -4rem;
       top: 100%;
       z-index: 20;
       background: color-mix(in srgb, var(--surface2) 90%, var(--accent) 10%);
@@ -476,7 +506,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     }
     /* Rightmost column: flip to shift left instead */
     .cat-last-col .link-item.link-focused .link-detail {
-      left: -2rem;
+      left: -4rem;
       right: 2rem;
     }
     .link-detail-title {
@@ -1160,6 +1190,155 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
 
     initSortable();
 
+    // ── Multi-select + bulk move ──────────────────────────────────────────────
+
+    const _selectedLinks = new Set(); // link IDs (numbers)
+    let _selAnchorId = null;          // anchor for shift+click range select
+
+    function reapplySelection() {
+      document.querySelectorAll('#categories .link-item').forEach(el => {
+        el.classList.toggle('link-selected', _selectedLinks.has(Number(el.dataset.id)));
+      });
+    }
+
+    function clearSelection() {
+      _selectedLinks.clear();
+      _selAnchorId = null;
+      document.querySelectorAll('.link-item.link-selected')
+        .forEach(el => el.classList.remove('link-selected'));
+      const bar = document.getElementById('selection-bar');
+      if (bar) bar.hidden = true;
+    }
+
+    // Ctrl+click: toggle one item and make it the range anchor.
+    function handleCtrlClick(id, el) {
+      if (_selectedLinks.has(id)) { _selectedLinks.delete(id); el.classList.remove('link-selected'); }
+      else                        { _selectedLinks.add(id);    el.classList.add('link-selected');    }
+      _selAnchorId = id;
+      updateSelectionBar();
+    }
+
+    // Shift+click: select every item from the anchor to the clicked item (inclusive).
+    // The anchor stays fixed so repeated shift+clicks always extend from the same point.
+    function handleShiftClick(id, el) {
+      if (_selAnchorId === null) { handleCtrlClick(id, el); return; }
+      const items = [...document.querySelectorAll('#categories .link-item')];
+      const anchorIdx = items.findIndex(i => Number(i.dataset.id) === _selAnchorId);
+      const targetIdx = items.findIndex(i => Number(i.dataset.id) === id);
+      if (anchorIdx === -1) { handleCtrlClick(id, el); return; }
+      const lo = Math.min(anchorIdx, targetIdx);
+      const hi = Math.max(anchorIdx, targetIdx);
+      for (let i = lo; i <= hi; i++) {
+        _selectedLinks.add(Number(items[i].dataset.id));
+        items[i].classList.add('link-selected');
+      }
+      updateSelectionBar();
+    }
+
+    async function updateSelectionBar() {
+      const bar = document.getElementById('selection-bar');
+      if (!bar) return;
+      if (_selectedLinks.size === 0) { bar.hidden = true; return; }
+      bar.hidden = false;
+      document.getElementById('sel-count').textContent = `${_selectedLinks.size} selected`;
+
+      // Populate dropdowns on first show (or after #main swap reset them)
+      const panelDd = document.getElementById('sel-panel-dd');
+      if (panelDd && !panelDd.options.length) await populateSelectionDropdowns();
+    }
+
+    async function populateSelectionDropdowns() {
+      const panelDd = document.getElementById('sel-panel-dd');
+      const catDd   = document.getElementById('sel-cat-dd');
+      if (!panelDd || !catDd) return;
+      let meta;
+      try {
+        const r = await fetch('/api/meta');
+        if (!r.ok) return;
+        meta = await r.json();
+      } catch { return; }
+      panelDd._meta = meta;
+      const activePanelId = Number(document.getElementById('active-panel')?.value);
+      panelDd.innerHTML = '';
+      for (const p of meta) {
+        const opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        if (p.id === activePanelId) opt.selected = true;
+        panelDd.appendChild(opt);
+      }
+      populateCatDropdown(Number(panelDd.value), meta);
+    }
+
+    function populateCatDropdown(panelId, meta) {
+      const catDd = document.getElementById('sel-cat-dd');
+      if (!catDd) return;
+      const panel = (meta ?? document.getElementById('sel-panel-dd')?._meta)?.find(p => p.id === panelId);
+      catDd.innerHTML = '';
+      for (const c of panel?.cats ?? []) {
+        const opt = document.createElement('option');
+        opt.value = c.id; opt.textContent = c.name;
+        catDd.appendChild(opt);
+      }
+      // Default to "Default" category if one exists
+      const def = [...catDd.options].find(o => o.textContent.toLowerCase() === 'default');
+      if (def) catDd.value = def.value;
+    }
+
+    async function handleBulkMove() {
+      const catDd = document.getElementById('sel-cat-dd');
+      if (!catDd || !_selectedLinks.size) return;
+      const categoryId    = Number(catDd.value);
+      const sourcePanelId = Number(document.getElementById('active-panel')?.value);
+      if (!categoryId || !sourcePanelId) return;
+      try {
+        const resp = await fetch('/api/links/bulk-move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: [..._selectedLinks], category_id: categoryId, source_panel_id: sourcePanelId }),
+        });
+        if (resp.ok) {
+          const cats = document.getElementById('categories');
+          cats.innerHTML = await resp.text();
+          window.htmx?.process(cats);
+          initCatLinkSortables(); applyLayout();
+          clearSelection();
+        } else {
+          showError((await resp.text()) || 'Move failed');
+        }
+      } catch (err) {
+        showError(err?.message || 'Network error — move failed');
+      }
+    }
+
+    function initSelectionBar() {
+      // Reset dropdowns so they refetch fresh meta after a #main swap
+      const panelDd = document.getElementById('sel-panel-dd');
+      const catDd   = document.getElementById('sel-cat-dd');
+      if (panelDd) { panelDd.innerHTML = ''; delete panelDd._meta; }
+      if (catDd)   catDd.innerHTML = '';
+      document.getElementById('sel-move')?.addEventListener('click', handleBulkMove);
+      document.getElementById('sel-clear')?.addEventListener('click', clearSelection);
+      document.getElementById('sel-panel-dd')?.addEventListener('change', () => {
+        populateCatDropdown(Number(document.getElementById('sel-panel-dd').value));
+      });
+    }
+
+    initSelectionBar();
+
+    // Ctrl+click: toggle one item (and set range anchor).
+    // Shift+click: select range from anchor to clicked item.
+    document.addEventListener('click', e => {
+      const isCtrl  = (e.ctrlKey || e.metaKey) && !e.shiftKey;
+      const isShift = e.shiftKey;
+      if (!isCtrl && !isShift) return;
+      const item = e.target.closest('.link-item');
+      if (!item || !item.closest('#categories')) return;
+      if (e.target.closest('button, .drag-handle, input, textarea, form')) return;
+      e.preventDefault(); e.stopPropagation();
+      if (isCtrl)  handleCtrlClick(Number(item.dataset.id), item);
+      else         handleShiftClick(Number(item.dataset.id), item);
+    });
+
     // Press 1–9 to switch panels; ignored while typing in a form field.
     document.addEventListener('keydown', e => {
       const tag = document.activeElement?.tagName;
@@ -1177,14 +1356,17 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       const id = evt.target.id;
       if (id === 'categories') {
         setFocusedLink(null); initCatLinkSortables(); applyLayout();
-        // Only clear search when the swap was triggered by a panel-tab click,
-        // not by category/link add, rename, delete, or reorder.
         if (evt.detail?.elt?.classList?.contains('panel-tab__btn')) {
+          // Switching panels: clear selection and search
+          clearSelection();
           const sf = document.querySelector('.search-form');
           if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
+        } else {
+          // Category/link op: restore selection highlight on refreshed DOM
+          reapplySelection();
         }
       } else if (id === 'main') {
-        setFocusedLink(null); initSortable(); applyLayout();
+        setFocusedLink(null); initSortable(); initSelectionBar(); clearSelection(); applyLayout();
         const sf = document.querySelector('.search-form');
         if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
       }
@@ -1253,6 +1435,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
           window.htmx?.process(cats);
           initCatLinkSortables();
           applyLayout();
+          reapplySelection();
           editDialog.close();
         } else {
           showError((await resp.text()) || 'Save failed');
