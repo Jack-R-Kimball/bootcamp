@@ -498,15 +498,59 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       border-top: 1px solid var(--border);
     }
 
-    /* ── Edit form ──────────────────────────────────────── */
-    .edit-form {
-      padding: 0.375rem 0.75rem;
-      flex-direction: column;
-      align-items: stretch;
-    }
-    .edit-form input { width: 100% !important; }
-    .edit-form button { align-self: flex-start; }
     .form-actions { display: flex; gap: 0.375rem; align-items: center; }
+
+    /* ── Edit dialog ────────────────────────────────────── */
+    #edit-dialog {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      margin: 0;
+      width: 60vw;
+      max-width: 860px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 1.5rem;
+      font-family: inherit;
+      font-size: 0.8125rem;
+    }
+    #edit-dialog::backdrop { background: rgba(0,0,0,0.65); }
+    #edit-dialog h3 {
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1rem;
+    }
+    #edit-dialog label {
+      display: block;
+      font-size: 0.6rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    #edit-dialog .field { margin-bottom: 0.75rem; }
+    #edit-dialog textarea,
+    #edit-dialog input[type="url"] {
+      width: 100%;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 0.375rem 0.5rem;
+      font-family: inherit;
+      font-size: 0.8125rem;
+      box-sizing: border-box;
+    }
+    #edit-dialog textarea { resize: vertical; }
+    #edit-dialog textarea:focus,
+    #edit-dialog input[type="url"]:focus { outline: none; border-color: var(--accent); }
+    @media (max-width: 640px) { #edit-dialog { width: 92vw; } }
 
     /* ── Category kebab menu ────────────────────────────── */
     .cat-rename-form { flex: 1; }
@@ -730,6 +774,28 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     </div>
     <div id="main" set:html={renderMain(panels, activePanel?.id, categories)}></div>
   </div>
+
+  <dialog id="edit-dialog">
+    <h3>Edit link</h3>
+    <form id="edit-form">
+      <div class="field">
+        <label for="edit-name">Name</label>
+        <textarea id="edit-name" name="name" rows="2" required></textarea>
+      </div>
+      <div class="field">
+        <label for="edit-url">URL</label>
+        <input type="url" id="edit-url" name="url" required>
+      </div>
+      <div class="field">
+        <label for="edit-desc">Description</label>
+        <textarea id="edit-desc" name="description" rows="3" placeholder="optional"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">save</button>
+        <button type="button" class="btn-ghost" id="edit-cancel">cancel</button>
+      </div>
+    </form>
+  </dialog>
 
   <script>
     import Alpine from 'alpinejs';
@@ -1079,6 +1145,49 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
 
     document.getElementById('layout-toggle')?.addEventListener('click', toggleLayout);
     applyLayout();
+
+    // ── Edit dialog ───────────────────────────────────────────────────────────
+
+    const editDialog = document.getElementById('edit-dialog');
+    let _editLinkId  = null;
+    let _editPanelId = null;
+
+    function openEditDialog(btn) {
+      _editLinkId  = Number(btn.dataset.linkId);
+      _editPanelId = Number(btn.dataset.panelId);
+      document.getElementById('edit-name').value = btn.dataset.name;
+      document.getElementById('edit-url').value  = btn.dataset.url;
+      document.getElementById('edit-desc').value = btn.dataset.description || '';
+      editDialog.showModal();
+      setTimeout(() => document.getElementById('edit-name').focus(), 50);
+    }
+
+    // Event delegation — works after every HTMX swap
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('.btn-edit');
+      if (btn) openEditDialog(btn);
+    });
+
+    document.getElementById('edit-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const fd = new FormData();
+      fd.set('name',        document.getElementById('edit-name').value.trim());
+      fd.set('url',         document.getElementById('edit-url').value.trim());
+      fd.set('description', document.getElementById('edit-desc').value.trim());
+      fd.set('panel_id',    _editPanelId);
+      const resp = await fetch(`/api/links/${_editLinkId}`, { method: 'PUT', body: fd });
+      if (resp.ok) {
+        const cats = document.getElementById('categories');
+        cats.innerHTML = await resp.text();
+        initCatLinkSortables();
+        applyLayout();
+        editDialog.close();
+      }
+    });
+
+    document.getElementById('edit-cancel').addEventListener('click', () => editDialog.close());
+    // Close on backdrop click
+    editDialog.addEventListener('click', e => { if (e.target === editDialog) editDialog.close(); });
   </script>
 </body>
 </html>

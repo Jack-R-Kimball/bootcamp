@@ -9,8 +9,8 @@ function esc(v) {
 
 function renderLink(link, panelId) {
   return `
-    <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ editing: false, menu: false }" @click.outside="menu = false">
-      <div x-show="!editing" class="link-row" @contextmenu.prevent="menu = !menu">
+    <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ menu: false }" @click.outside="menu = false">
+      <div class="link-row" @contextmenu.prevent="menu = !menu">
         <span class="drag-handle link-drag-handle" title="Drag to reorder">⠿</span>
         <div class="link-info">
           <a href="${esc(link.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
@@ -18,7 +18,12 @@ function renderLink(link, panelId) {
           ${link.description ? `<span class="link-desc">${esc(link.description)}</span>` : ''}
         </div>
         <span class="link-actions" x-show="menu" x-cloak @mouseleave="menu = false" @click="menu = false">
-          <button class="btn-action" @click="editing = true">edit</button>
+          <button class="btn-action btn-edit"
+            data-link-id="${link.id}"
+            data-name="${esc(link.name)}"
+            data-url="${esc(link.url)}"
+            data-description="${esc(link.description ?? '')}"
+            data-panel-id="${panelId}">edit</button>
           <button class="btn-action del"
             hx-delete="/api/links/${link.id}?panel_id=${panelId}"
             hx-target="#categories"
@@ -26,19 +31,6 @@ function renderLink(link, panelId) {
             hx-confirm="Delete '${esc(link.name)}'?">del</button>
         </span>
       </div>
-      <form x-show="editing" x-cloak class="inline-form edit-form"
-        hx-put="/api/links/${link.id}"
-        hx-target="#categories"
-        hx-swap="innerHTML">
-        <input type="hidden" name="panel_id" value="${panelId}">
-        <input name="name" value="${esc(link.name)}" required>
-        <input name="url" value="${esc(link.url)}" required>
-        <input name="description" value="${esc(link.description ?? '')}" placeholder="Description (optional)">
-        <div class="form-actions">
-          <button type="submit" class="btn-primary">save</button>
-          <button type="button" class="btn-ghost" @mousedown="editing = false; menu = false">cancel</button>
-        </div>
-      </form>
     </div>`;
 }
 
