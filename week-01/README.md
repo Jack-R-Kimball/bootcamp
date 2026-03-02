@@ -17,6 +17,16 @@ podman compose up -d
 ```
 
 ### Podman (v3.x)
+
+Podman 3.x has a known issue with CNI bridge networking. Use `network_mode: host` in `docker-compose.yml` instead of `ports`:
+
+```yaml
+    network_mode: host
+    # ports:          ← remove this
+    #   - "4321:4321" ← remove this
+```
+
+Then:
 ```bash
 podman-compose up -d
 ```

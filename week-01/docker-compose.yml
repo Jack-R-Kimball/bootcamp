@@ -2,8 +2,7 @@ services:
   dashboard:
     image: ghcr.io/jack-r-kimball/link-dashboard:latest
     # build: .   # uncomment to build locally instead of pulling
-    ports:
-      - "4321:4321"
+    network_mode: host
     volumes:
       - dashboard-data:/data
     restart: unless-stopped
