@@ -941,7 +941,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
           const catsEl = document.getElementById('categories');
           if (!catsEl) return;
           catsEl.innerHTML = html;
-          htmx.process(catsEl);
+          window.htmx?.process(catsEl);
           setFocusedLink(null);
           initCatLinkSortables();
         })
@@ -1245,14 +1245,20 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       fd.set('keyword',     document.getElementById('edit-keyword').value.trim());
       fd.set('tags',        document.getElementById('edit-tags').value.trim());
       fd.set('panel_id',    _editPanelId);
-      const resp = await fetch(`/api/links/${_editLinkId}`, { method: 'PUT', body: fd });
-      if (resp.ok) {
-        const cats = document.getElementById('categories');
-        cats.innerHTML = await resp.text();
-        htmx.process(cats);
-        initCatLinkSortables();
-        applyLayout();
-        editDialog.close();
+      try {
+        const resp = await fetch(`/api/links/${_editLinkId}`, { method: 'PUT', body: fd });
+        if (resp.ok) {
+          const cats = document.getElementById('categories');
+          cats.innerHTML = await resp.text();
+          window.htmx?.process(cats);
+          initCatLinkSortables();
+          applyLayout();
+          editDialog.close();
+        } else {
+          showError((await resp.text()) || 'Save failed');
+        }
+      } catch (err) {
+        showError(err?.message || 'Network error — save failed');
       }
     });
 
