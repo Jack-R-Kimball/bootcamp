@@ -318,7 +318,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     /* ── Panel gear menu ─────────────────────────────────── */
     .panel-gear { position: relative; }
     .gear-btn {
-      font-size: 0.875rem;
+      font-size: 1.1rem;
       color: var(--muted);
       padding: 0.2rem 0.4rem;
     }
@@ -360,6 +360,23 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
       gap: 0.75rem;
       align-items: start;
+      max-height: calc(100vh - 9rem);
+      overflow-y: auto;
+    }
+
+    /* Compact (masonry columns) layout — toggled via hamburger menu */
+    #categories.layout-compact {
+      display: block;
+      columns: 275px;
+      column-gap: 0.75rem;
+      max-height: none;
+      overflow-y: visible;
+    }
+    #categories.layout-compact .category {
+      break-inside: avoid;
+      display: inline-block;
+      width: 100%;
+      margin-bottom: 0.75rem;
     }
     .empty { color: var(--muted); font-size: 0.8125rem; }
 
@@ -369,16 +386,13 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       border: 1px solid var(--border);
       border-radius: var(--r);
       position: relative;
-      z-index: 1;
-      transform-origin: top center;
-      transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+      transition: box-shadow 200ms ease, border-color 200ms ease, background 200ms ease;
     }
-    /* Scale up on links-list hover only; suppress when a form has focus or the kebab menu is open */
+    /* Highlight on links-list hover; suppress when a form has focus or the kebab menu is open */
     .category:has(.links-list:hover):not(:focus-within):not(.cat-menu-open) {
-      transform: scale(1.15);
-      z-index: 20;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
       border-color: var(--accent);
+      background: color-mix(in srgb, var(--surface) 85%, var(--accent) 15%);
     }
     /* Show all descriptions while the links list is hovered */
     .category:has(.links-list:hover):not(:focus-within):not(.cat-menu-open) .link-desc { display: block; }
@@ -401,7 +415,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     }
 
     /* ── Links ──────────────────────────────────────────── */
-    .links-list { padding: 0.25rem 0; }
+    .links-list { padding: 0.25rem 0; max-height: 45vh; overflow-y: auto; }
     .link-item  {
       position: relative;
       z-index: 0;
@@ -700,6 +714,8 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         <div x-show="open" x-cloak class="header-dropdown">
           <a href={bookmarklet} class="menu-item" title="Drag this link to your toolbar to install a bookmarklet that directly saves pages to the dashboard." @click.prevent>Install bookmarklet</a>
           <a href="/import" class="menu-item">import</a>
+          <div class="menu-divider"></div>
+          <button class="menu-item" id="layout-toggle">compact layout</button>
           <div class="menu-divider"></div>
           <div class="menu-theme" x-data="themeToggle">
             <span class="menu-label">theme</span>
@@ -1036,15 +1052,33 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     document.addEventListener('htmx:afterSwap', (evt) => {
       const id = evt.target.id;
       if (id === 'categories') {
-        setFocusedLink(null); initCatLinkSortables();
+        setFocusedLink(null); initCatLinkSortables(); applyLayout();
         const sf = document.querySelector('.search-form');
         if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
       } else if (id === 'main') {
-        setFocusedLink(null); initSortable();
+        setFocusedLink(null); initSortable(); applyLayout();
         const sf = document.querySelector('.search-form');
         if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
       }
     });
+
+    // ── Layout toggle (grid ↔ compact columns) ────────────────────────────────
+
+    function applyLayout() {
+      const compact = localStorage.getItem('dashLayout') === 'compact';
+      document.getElementById('categories')?.classList.toggle('layout-compact', compact);
+      const btn = document.getElementById('layout-toggle');
+      if (btn) btn.textContent = compact ? '✓ compact layout' : 'compact layout';
+    }
+
+    function toggleLayout() {
+      const compact = localStorage.getItem('dashLayout') === 'compact';
+      localStorage.setItem('dashLayout', compact ? 'grid' : 'compact');
+      applyLayout();
+    }
+
+    document.getElementById('layout-toggle')?.addEventListener('click', toggleLayout);
+    applyLayout();
   </script>
 </body>
 </html>
