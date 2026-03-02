@@ -128,11 +128,11 @@ export const deleteLink = (id) =>
 export function searchLinks(query, panelId = null, caseSensitive = false) {
   const term = caseSensitive ? query : query.toLowerCase();
   const matchExpr = caseSensitive
-    ? `(instr(l.name, ?) > 0 OR instr(l.url, ?) > 0 OR instr(COALESCE(l.description, ''), ?) > 0)`
-    : `(instr(lower(l.name), ?) > 0 OR instr(lower(l.url), ?) > 0 OR instr(lower(COALESCE(l.description, '')), ?) > 0)`;
-  const params = [term, term, term];
+    ? `(instr(l.name, ?) > 0 OR instr(l.url, ?) > 0 OR instr(COALESCE(l.description, ''), ?) > 0 OR instr(COALESCE(l.keyword, ''), ?) > 0 OR instr(COALESCE(l.tags, ''), ?) > 0)`
+    : `(instr(lower(l.name), ?) > 0 OR instr(lower(l.url), ?) > 0 OR instr(lower(COALESCE(l.description, '')), ?) > 0 OR instr(lower(COALESCE(l.keyword, '')), ?) > 0 OR instr(lower(COALESCE(l.tags, '')), ?) > 0)`;
+  const params = [term, term, term, term, term];
   let sql = `
-    SELECT l.id, l.name, l.url, l.description,
+    SELECT l.id, l.name, l.url, l.description, l.keyword, l.tags,
            c.id as cat_id, c.name as cat_name,
            p.id as panel_id, p.name as panel_name
     FROM links l

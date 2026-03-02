@@ -770,6 +770,27 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       .inline-form button { align-self: flex-start; }
     }
 
+    /* ── Tooltip ─────────────────────────────────────────────────────────── */
+    [data-tooltip] { position: relative; }
+    [data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 0.2rem 0.5rem;
+      font-size: 0.6rem;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      color: var(--text);
+      z-index: 200;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      pointer-events: none;
+    }
+
     /* ── Error toast ─────────────────────────────────────────────────────── */
     .error-toast {
       position: fixed;
@@ -793,24 +814,12 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
   <div class="container">
     <div class="header">
       <h1>Dashboard</h1>
-      <form class="search-form" x-data="search" @submit.prevent
-        @mouseenter="hovered = true"
-        @mouseleave="if (!q) hovered = false"
-        :class="{ 'search-expanded': hovered || q }">
+      <form class="search-form" id="search-form">
         <span class="search-label">&#x1F50D;</span>
-        <input type="search" class="search-input" placeholder="search links…"
-          x-model="q"
-          x-ref="searchInput"
-          @input.debounce.300ms="run()"
-          @focus="hovered = true"
-          @keydown.escape="q = ''; clear(); hovered = false">
-        <button type="button" class="search-clear"
-          @click="if (q) { q = ''; clear(); } else { hovered = false; }"
-          title="Clear">×</button>
-        <button type="button" class="search-opt" :class="{ active: cs }"
-          @click="cs = !cs; if (q) run()" title="Case sensitive">Aa</button>
-        <button type="button" class="search-opt" :class="{ active: allPanels }"
-          @click="allPanels = !allPanels; if (q) run()" title="Search all panels">all</button>
+        <input type="search" id="search-input" class="search-input" placeholder="search links…">
+        <button type="button" id="search-clear" class="search-clear" data-tooltip="Clear search">×</button>
+        <button type="button" id="search-cs"  class="search-opt" data-tooltip="Toggle case-sensitive search">Aa</button>
+        <button type="button" id="search-all" class="search-opt" data-tooltip="Toggle: current panel / all panels">all</button>
       </form>
       <div x-data="clock" class="clock">
         <span class="clock-time" x-text="time"></span>
@@ -903,45 +912,91 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       },
     }));
 
-    Alpine.data('search', () => ({
-      q: '',
-      allPanels: false,
-      cs: false,
-      hovered: false,
-      _ctrl: null,
-      async run() {
-        if (!this.q.trim()) { this.clear(); return; }
-        if (this._ctrl) this._ctrl.abort();
-        this._ctrl = new AbortController();
-        const panelId = document.getElementById('active-panel')?.value;
-        const p = new URLSearchParams({ q: this.q });
-        if (this.cs) p.set('cs', '1');
-        if (this.allPanels || !panelId) p.set('all', '1');
-        else p.set('panel_id', panelId);
-        try {
-          const r = await fetch('/api/search?' + p, { signal: this._ctrl.signal });
-          if (r.ok) {
-            const html = await r.text();
-            const catsEl = document.getElementById('categories');
-            if (catsEl) catsEl.innerHTML = html;
-          }
-        } catch (e) { if (e.name !== 'AbortError') throw e; }
-        this._ctrl = null;
-      },
-      clear() {
-        this.q = '';
-        if (this._ctrl) { this._ctrl.abort(); this._ctrl = null; }
-        const btn = document.querySelector('.panel-tab--active .panel-tab__btn')
-          ?? document.querySelector('.panel-tab__btn');
-        if (btn) {
-          btn.click();
-        } else {
-          // No panels exist — just clear the categories area directly.
+    // ── Search (plain JS — no Alpine to avoid proxy/context issues) ──────────
+    let _srCtrl  = null;
+    let _srTimer = null;
+    let _srCs    = false;
+    let _srAll   = false;
+
+    // Clear abort/timer state and reset input UI — does NOT reload categories.
+    function resetSearchState() {
+      if (_srCtrl) { _srCtrl.abort(); _srCtrl = null; }
+      clearTimeout(_srTimer); _srTimer = null;
+      const si = document.getElementById('search-input');
+      if (si) si.value = '';
+      document.getElementById('search-form')?.classList.remove('search-expanded');
+    }
+
+    // Reset state AND reload the active panel's categories.
+    function clearSearch() {
+      resetSearchState();
+      const btn = document.querySelector('.panel-tab--active .panel-tab__btn')
+        ?? document.querySelector('.panel-tab__btn');
+      if (btn) {
+        btn.click();
+      } else {
+        const catsEl = document.getElementById('categories');
+        if (catsEl) catsEl.innerHTML = '<p class="empty">No categories yet — add one via the ⚙ menu.</p>';
+      }
+    }
+
+    async function runSearch() {
+      const q = document.getElementById('search-input')?.value.trim() ?? '';
+      if (!q) { clearSearch(); return; }
+      if (_srCtrl) _srCtrl.abort();
+      _srCtrl = new AbortController();
+      const panelId = document.getElementById('active-panel')?.value;
+      const p = new URLSearchParams({ q });
+      if (_srCs) p.set('cs', '1');
+      if (_srAll || !panelId) p.set('all', '1');
+      else p.set('panel_id', panelId);
+      try {
+        const r = await fetch('/api/search?' + p, { signal: _srCtrl.signal });
+        if (r.ok) {
           const catsEl = document.getElementById('categories');
-          if (catsEl) catsEl.innerHTML = '<p class="empty">No categories yet — add one via the ⚙ menu.</p>';
+          if (catsEl) catsEl.innerHTML = await r.text();
         }
-      },
-    }));
+      } catch (e) { if (e.name !== 'AbortError') throw e; }
+      _srCtrl = null;
+    }
+
+    (function initSearch() {
+      const form   = document.getElementById('search-form');
+      const input  = document.getElementById('search-input');
+      const btnClr = document.getElementById('search-clear');
+      const btnCs  = document.getElementById('search-cs');
+      const btnAll = document.getElementById('search-all');
+      if (!input || !form) return;
+      form.addEventListener('submit',     e => e.preventDefault());
+      form.addEventListener('mouseenter', () => form.classList.add('search-expanded'));
+      form.addEventListener('mouseleave', () => {
+        if (!input.value && document.activeElement !== input)
+          form.classList.remove('search-expanded');
+      });
+      input.addEventListener('focus', () => form.classList.add('search-expanded'));
+      input.addEventListener('blur',  () => { if (!input.value) form.classList.remove('search-expanded'); });
+      input.addEventListener('input', () => {
+        clearTimeout(_srTimer);
+        _srTimer = setTimeout(runSearch, 300);
+      });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { input.value = ''; clearSearch(); }
+      });
+      btnClr.addEventListener('click', () => {
+        if (input.value) { input.value = ''; clearSearch(); }
+        else form.classList.remove('search-expanded');
+      });
+      btnCs.addEventListener('click', () => {
+        _srCs = !_srCs;
+        btnCs.classList.toggle('active', _srCs);
+        if (input.value.trim()) runSearch();
+      });
+      btnAll.addEventListener('click', () => {
+        _srAll = !_srAll;
+        btnAll.classList.toggle('active', _srAll);
+        if (input.value.trim()) runSearch();
+      });
+    })();
 
     Alpine.start();
 
@@ -1359,16 +1414,14 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         if (evt.detail?.elt?.classList?.contains('panel-tab__btn')) {
           // Switching panels: clear selection and search
           clearSelection();
-          const sf = document.querySelector('.search-form');
-          if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
+          resetSearchState();
         } else {
           // Category/link op: restore selection highlight on refreshed DOM
           reapplySelection();
         }
       } else if (id === 'main') {
         setFocusedLink(null); initSortable(); initSelectionBar(); clearSelection(); applyLayout();
-        const sf = document.querySelector('.search-form');
-        if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
+        resetSearchState();
       }
     });
 
