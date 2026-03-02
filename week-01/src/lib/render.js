@@ -104,32 +104,79 @@ function renderCategory(cat, panelId) {
     </div>`;
 }
 
-// showPanel: pass true when results span multiple panels (i.e. "all panels" search)
-// so the panel name is prepended to the category breadcrumb.  Pass false (default)
-// when results are already scoped to one panel.
-export function renderSearchResults(results, showPanel = false) {
-  if (!results.length) {
-    return '<div class="sr-wrapper"><p class="empty">No matches found.</p></div>';
-  }
-  const items = results.map(r => {
-    const metaParts = [];
-    if (r.keyword) metaParts.push(`(${esc(r.keyword)})`);
-    if (r.tags)    metaParts.push(esc(r.tags));
-    const metaStr = metaParts.join(' ');
-    return `
-    <div class="link-item sr-item">
+// Render a single search-result link item (no drag handle, no edit/delete).
+function renderSearchLink(r) {
+  const metaParts = [];
+  if (r.keyword) metaParts.push(`(${esc(r.keyword)})`);
+  if (r.tags)    metaParts.push(esc(r.tags));
+  const metaStr = metaParts.join(' ');
+  return `
+    <div class="link-item" data-id="${r.id}">
       <div class="link-row">
         <div class="link-info">
           <a href="${esc(r.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(r.name)}</a>
-          <span class="sr-loc">${showPanel ? esc(r.panel_name) + ' › ' : ''}${esc(r.cat_name)}</span>
-          ${r.description ? `<span class="link-desc">${esc(r.description)}</span>` : ''}
-          ${metaStr ? `<span class="link-meta">${metaStr}</span>` : ''}
-          <span class="link-url">${esc(r.url)}</span>
         </div>
       </div>
+      <div class="link-detail">
+        <a href="${esc(r.url)}" class="link-detail-title" target="_blank" rel="noopener noreferrer">${esc(r.name)}</a>
+        ${r.description ? `<span class="link-desc">${esc(r.description)}</span>` : ''}
+        ${metaStr ? `<span class="link-meta">${metaStr}</span>` : ''}
+        <span class="link-detail-url">${esc(r.url)}</span>
+      </div>
     </div>`;
+}
+
+// Render a read-only category card for search results (no Alpine, no controls).
+function renderSearchCategory(name, links) {
+  return `
+    <div class="category">
+      <div class="category-header">
+        <h2 class="category-title">${esc(name)}</h2>
+      </div>
+      <div class="links-list">
+        ${links.map(renderSearchLink).join('')}
+      </div>
+    </div>`;
+}
+
+// showPanel: true when results span multiple panels so panel headers are shown.
+export function renderSearchResults(results, showPanel = false) {
+  if (!results.length) {
+    return '<p class="empty">No matches found.</p>';
+  }
+
+  // Group results: panel → category → links (SQL order preserved)
+  const panelOrder = [];
+  const panels = new Map();
+  for (const r of results) {
+    if (!panels.has(r.panel_id)) {
+      panels.set(r.panel_id, { name: r.panel_name, catOrder: [], cats: new Map() });
+      panelOrder.push(r.panel_id);
+    }
+    const p = panels.get(r.panel_id);
+    if (!p.cats.has(r.cat_id)) {
+      p.cats.set(r.cat_id, { name: r.cat_name, links: [] });
+      p.catOrder.push(r.cat_id);
+    }
+    p.cats.get(r.cat_id).links.push(r);
+  }
+
+  const sections = panelOrder.map(pid => {
+    const panel = panels.get(pid);
+    const cats  = panel.catOrder
+      .map(cid => renderSearchCategory(panel.cats.get(cid).name, panel.cats.get(cid).links))
+      .join('');
+    if (showPanel) {
+      return `
+        <div class="sr-panel-section">
+          <div class="sr-panel-header">${esc(panel.name)}</div>
+          <div class="sr-cats">${cats}</div>
+        </div>`;
+    }
+    return `<div class="sr-cats">${cats}</div>`;
   }).join('');
-  return `<div class="sr-wrapper">${items}</div>`;
+
+  return `<div class="sr-wrapper">${sections}</div>`;
 }
 
 export function renderCategories(categories, panelId) {
