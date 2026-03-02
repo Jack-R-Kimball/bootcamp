@@ -812,10 +812,6 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     <h3>Edit link</h3>
     <form id="edit-form">
       <div class="field">
-        <label for="edit-url">URL</label>
-        <input type="url" id="edit-url" name="url" required>
-      </div>
-      <div class="field">
         <label for="edit-name">Name</label>
         <textarea id="edit-name" name="name" rows="2" required></textarea>
       </div>
@@ -830,6 +826,10 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       <div class="field">
         <label for="edit-tags">Tags</label>
         <input type="text" id="edit-tags" name="tags" placeholder="tag1, tag2, tag3 (optional)">
+      </div>
+      <div class="field">
+        <label for="edit-url">URL</label>
+        <input type="url" id="edit-url" name="url" required>
       </div>
       <div class="form-actions">
         <button type="submit" class="btn-primary">save</button>

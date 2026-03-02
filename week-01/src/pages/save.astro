@@ -100,6 +100,7 @@ for (const p of panelsData) {
 
     .row { display: flex; gap: 0.625rem; }
     .row .field { flex: 1; }
+    .field-sm { flex: 0 0 7rem !important; }
 
     .url-bar {
       font-size: 0.6rem;
@@ -159,6 +160,16 @@ for (const p of panelsData) {
           <div class="field">
             <label>Category</label>
             <select id="cat-sel" name="category_id"></select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field field-sm">
+            <label>Keyword</label>
+            <input id="keyword-input" name="keyword" placeholder="optional">
+          </div>
+          <div class="field">
+            <label>Tags</label>
+            <input id="tags-input" name="tags" placeholder="tag1, tag2 (optional)">
           </div>
         </div>
         <div class="url-bar" id="url-bar"></div>
@@ -222,6 +233,8 @@ for (const p of panelsData) {
       data.append('name',        nameInput.value.trim());
       data.append('url',         rawUrl);
       data.append('description', document.getElementById('desc-input').value.trim());
+      data.append('keyword',     document.getElementById('keyword-input').value.trim());
+      data.append('tags',        document.getElementById('tags-input').value.trim());
       data.append('category_id', catSel.value);
       data.append('panel_id',    panelSel.value);
       try {

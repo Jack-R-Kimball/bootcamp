@@ -37,9 +37,9 @@ function renderLink(link, panelId) {
       </div>
       <div class="link-detail">
         <a href="${esc(link.url)}" class="link-detail-title" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
-        <span class="link-detail-url">${esc(link.url)}</span>
         ${link.description ? `<span class="link-desc">${esc(link.description)}</span>` : ''}
         ${metaStr ? `<span class="link-meta">${metaStr}</span>` : ''}
+        <span class="link-detail-url">${esc(link.url)}</span>
       </div>
     </div>`;
 }
