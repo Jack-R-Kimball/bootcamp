@@ -18,8 +18,6 @@ function renderLink(link, panelId) {
         <span class="drag-handle link-drag-handle" title="Drag to reorder">⠿</span>
         <div class="link-info">
           <a href="${esc(link.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
-          ${link.description ? `<span class="link-desc">${esc(link.description)}</span>` : ''}
-          ${metaStr ? `<span class="link-meta">${metaStr}</span>` : ''}
         </div>
         <span class="link-actions" x-show="menu" x-cloak @mouseleave="menu = false" @click="menu = false">
           <button class="btn-action btn-edit"
@@ -36,6 +34,12 @@ function renderLink(link, panelId) {
             hx-swap="innerHTML"
             hx-confirm="Delete '${esc(link.name)}'?">del</button>
         </span>
+      </div>
+      <div class="link-detail">
+        <a href="${esc(link.url)}" class="link-detail-title" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
+        <span class="link-detail-url">${esc(link.url)}</span>
+        ${link.description ? `<span class="link-desc">${esc(link.description)}</span>` : ''}
+        ${metaStr ? `<span class="link-meta">${metaStr}</span>` : ''}
       </div>
     </div>`;
 }
@@ -146,6 +150,7 @@ function renderPanelTab(panel, totalPanels) {
         hx-delete="/api/panels/${panel.id}"
         hx-target="#main"
         hx-swap="innerHTML"
+        hx-include="[name=panel_id]"
         hx-confirm="Delete panel '${esc(panel.name)}' and all its categories?">&times;</button>
       ` : ''}
     </div>`;

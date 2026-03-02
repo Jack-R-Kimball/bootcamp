@@ -5,7 +5,8 @@ export async function PUT({ params, request }) {
   const catId = Number(params.id);
   const data  = await request.formData();
   const name  = data.get('name')?.trim();
-  if (!name) return new Response('Name required', { status: 400 });
+  if (!name)             return new Response('Name required', { status: 400 });
+  if (name.length > 200) return new Response('Name too long', { status: 400 });
 
   // Prefer DB lookup (authoritative); fall back to form data if not found.
   // > 0 guard: panel IDs are always ≥ 1 (autoincrement), so 0 / NaN must not be used.

@@ -146,6 +146,14 @@ export function searchLinks(query, panelId = null, caseSensitive = false) {
 
 // ── Reordering ────────────────────────────────────────────────────────────────
 export function reorderCategories(ids) {
+  if (!ids.length) return;
+  // Guard against accidental cross-panel mixes (client should never send these,
+  // but reject explicitly rather than silently scrambling positions).
+  const placeholders = ids.map(() => '?').join(',');
+  const panels = db.prepare(
+    `SELECT DISTINCT panel_id FROM categories WHERE id IN (${placeholders})`
+  ).all(ids);
+  if (panels.length > 1) throw new Error('Cannot reorder categories across panels');
   const stmt = db.prepare('UPDATE categories SET position = ? WHERE id = ?');
   db.transaction(() => ids.forEach((id, i) => stmt.run(i, id)))();
 }
@@ -153,6 +161,8 @@ export function reorderCategories(ids) {
 // Reorder links — sets both category_id and position for each id.
 // Handles same-category reorder and cross-category drag in one pass.
 export function reorderLinks(ids, categoryId) {
+  const cat = db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId);
+  if (!cat) throw new Error(`Category ${categoryId} not found`);
   const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
   db.transaction(() => ids.forEach((id, i) => stmt.run(categoryId, i, id)))();
 }

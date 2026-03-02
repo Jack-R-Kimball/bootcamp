@@ -6,8 +6,10 @@ const panels = getPanels();
 const activePanel = panels[0];
 const categories = activePanel ? getCategories(activePanel.id) : [];
 
-const host   = Astro.request.headers.get('host') ?? 'localhost:4321';
-const proto  = Astro.request.headers.get('x-forwarded-proto') ?? 'http';
+const rawHost  = Astro.request.headers.get('host') ?? 'localhost:4321';
+const rawProto = Astro.request.headers.get('x-forwarded-proto') ?? 'http';
+const proto  = /^https?$/.test(rawProto) ? rawProto : 'http';
+const host   = /^[a-zA-Z0-9._:[\]-]+$/.test(rawHost) ? rawHost : 'localhost:4321';
 const origin = `${proto}://${host}`;
 const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+encodeURIComponent(location.href)+'&name='+encodeURIComponent(document.title),'_blank','width=480,height=365,popup=yes');})();`;
 ---
@@ -354,29 +356,26 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     .gear-form input { width: 100% !important; }
     .gear-form button { align-self: flex-start; }
 
-    /* ── Categories grid ────────────────────────────────── */
+    /* ── Categories layout ───────────────────────────────── */
+    /* CSS columns for masonry-style flow: cards pack top-to-bottom within each
+       column rather than being forced into equal-height grid rows.  Category
+       heights are stable during hover (overlay is position:absolute, no
+       in-flow expansion), so column rebalancing is no longer a concern. */
     #categories {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(275px, 1fr));
-      gap: 0.75rem;
-      align-items: start;
-      max-height: calc(100vh - 9rem);
-      overflow-y: auto;
-    }
-
-    /* Compact (masonry columns) layout — toggled via hamburger menu */
-    #categories.layout-compact {
-      display: block;
       columns: 275px;
       column-gap: 0.75rem;
-      max-height: none;
-      overflow-y: visible;
     }
-    #categories.layout-compact .category {
+    #categories > .category {
       break-inside: avoid;
       display: inline-block;
       width: 100%;
       margin-bottom: 0.75rem;
+      vertical-align: top;
+    }
+
+    /* Compact: narrower columns → more columns, denser view */
+    #categories.layout-compact {
+      columns: 220px;
     }
     .empty { color: var(--muted); font-size: 0.8125rem; }
 
@@ -394,8 +393,6 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       border-color: var(--accent);
       background: color-mix(in srgb, var(--surface) 85%, var(--accent) 15%);
     }
-    /* Show all descriptions while the links list is hovered */
-    .category:has(.links-list:hover):not(:focus-within):not(.cat-menu-open) .link-desc { display: block; }
     .category-header {
       display: flex;
       align-items: center;
@@ -415,7 +412,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     }
 
     /* ── Links ──────────────────────────────────────────── */
-    .links-list { padding: 0.25rem 0; max-height: 45vh; overflow-y: auto; }
+    .links-list { padding: 0.25rem 0; }
     .link-item  {
       position: relative;
       z-index: 0;
@@ -453,27 +450,53 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       text-decoration: underline;
       text-decoration-color: color-mix(in srgb, var(--link-hv) 35%, transparent);
     }
-    /* Unwrap title, show URL and description on focused item */
-    .link-item.link-focused .link-name {
+    /* Base styles for description and meta — visibility is controlled by parent .link-detail */
+    .link-desc { font-size: 0.6875rem; color: var(--muted); line-height: 1.3; }
+    .link-meta { font-size: 0.625rem; color: var(--accent); opacity: 0.75; line-height: 1.3; }
+
+    /* .link-detail is an absolutely-positioned overlay card that appears below the focused link row.
+       It never affects document flow, so hovering cannot push other links out of reach.
+       Shifted 2rem right so a strip of entries below remains visible and reachable.
+       .cat-last-col flips the direction for rightmost-column categories. */
+    .link-detail { display: none; }
+    .link-item.link-focused .link-detail {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      position: absolute;
+      left: 2rem;
+      right: -2rem;
+      top: 100%;
+      z-index: 20;
+      background: color-mix(in srgb, var(--surface2) 90%, var(--accent) 10%);
+      border: 1px solid color-mix(in srgb, var(--border) 40%, var(--accent) 60%);
+      border-radius: var(--r);
+      padding: 0.4rem 0.75rem;
+      box-shadow: inset 3px 0 0 var(--accent), 0 6px 18px rgba(0,0,0,0.5);
+    }
+    /* Rightmost column: flip to shift left instead */
+    .cat-last-col .link-item.link-focused .link-detail {
+      left: -2rem;
+      right: 2rem;
+    }
+    .link-detail-title {
+      color: var(--link);
+      text-decoration: none;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      line-height: 1.3;
       white-space: normal;
-      overflow: visible;
-      text-overflow: clip;
     }
-    .link-desc {
-      display: none;
-      font-size: 0.6875rem;
+    .link-detail-title:hover { color: var(--link-hv); text-decoration: underline; }
+    .link-detail-url {
+      font-size: 0.6rem;
       color: var(--muted);
-      line-height: 1.3;
+      opacity: 0.8;
+      line-height: 1.2;
+      word-break: break-all;
     }
-    .link-item.link-focused .link-desc { display: block; }
-    .link-meta {
-      display: none;
-      font-size: 0.625rem;
-      color: var(--accent);
-      opacity: 0.75;
-      line-height: 1.3;
-    }
-    .link-item.link-focused .link-meta { display: block; }
+    /* Always show descriptions in search results (not wrapped in .link-detail) */
+    .sr-item .link-desc { display: block; }
     .link-actions {
       position: absolute;
       right: 0.5rem;
@@ -617,8 +640,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     .links-list { min-height: 1.5rem; }
 
     /* ── Compact fallback clone during drag ─────────────── */
-    .link-item.sortable-fallback .link-desc,
-    .link-item.sortable-fallback .link-meta,
+    .link-item.sortable-fallback .link-detail,
     .link-item.sortable-fallback .link-actions,
     .link-item.sortable-fallback .link-drag-handle { display: none !important; }
     .link-item.sortable-fallback .link-name {
@@ -694,7 +716,18 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
 
     /* ── Touch / mobile: hover-only elements become always-on ───────────── */
     @media (hover: none) {
-      .link-desc { display: block; }
+      /* Show desc/meta inline (no overlay) — title and URL are redundant on mobile */
+      .link-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        position: static;
+        background: none;
+        border: none;
+        padding: 0 0.75rem 0.25rem 0.75rem;
+        box-shadow: none;
+      }
+      .link-detail-title, .link-detail-url { display: none; }
       .cat-chevron { display: inline; }
       .category-header { cursor: pointer; user-select: none; }
     }
@@ -1064,6 +1097,22 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     // #main, which is only replaced when panels are created or deleted.  Keeping
     // it separate avoids unnecessary destroy/re-create on every #categories swap.
 
+    // Tag the rightmost category in each grid row so CSS can flip the overlay direction.
+    function tagLastColCategories() {
+      const cats = [...document.querySelectorAll('.category')];
+      cats.forEach(c => c.classList.remove('cat-last-col'));
+      cats.forEach(c => {
+        const r = c.getBoundingClientRect();
+        const isLastCol = !cats.some(o => {
+          const or = o.getBoundingClientRect();
+          return o !== c
+            && Math.abs(or.top - r.top) < r.height / 2
+            && or.left > r.left;
+        });
+        if (isLastCol) c.classList.add('cat-last-col');
+      });
+    }
+
     function initPanelSortable() {
       if (_panelSortable) { _panelSortable.destroy(); _panelSortable = null; }
       const panelTabsEl = document.querySelector('.panel-tabs');
@@ -1100,6 +1149,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         });
       }
       addLinkSortables();
+      tagLastColCategories();
     }
 
     // Convenience wrapper: called on page load and after #main swaps.
@@ -1127,8 +1177,12 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       const id = evt.target.id;
       if (id === 'categories') {
         setFocusedLink(null); initCatLinkSortables(); applyLayout();
-        const sf = document.querySelector('.search-form');
-        if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
+        // Only clear search when the swap was triggered by a panel-tab click,
+        // not by category/link add, rename, delete, or reorder.
+        if (evt.detail?.elt?.classList?.contains('panel-tab__btn')) {
+          const sf = document.querySelector('.search-form');
+          if (sf) { const d = Alpine.$data(sf); if (d && d.q) { d.q = ''; } }
+        }
       } else if (id === 'main') {
         setFocusedLink(null); initSortable(); applyLayout();
         const sf = document.querySelector('.search-form');
@@ -1143,6 +1197,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       document.getElementById('categories')?.classList.toggle('layout-compact', compact);
       const btn = document.getElementById('layout-toggle');
       if (btn) btn.textContent = compact ? '✓ compact layout' : 'compact layout';
+      tagLastColCategories();
     }
 
     function toggleLayout() {
@@ -1153,6 +1208,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
 
     document.getElementById('layout-toggle')?.addEventListener('click', toggleLayout);
     applyLayout();
+    window.addEventListener('resize', tagLastColCategories);
 
     // ── Edit dialog ───────────────────────────────────────────────────────────
 
@@ -1193,6 +1249,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       if (resp.ok) {
         const cats = document.getElementById('categories');
         cats.innerHTML = await resp.text();
+        htmx.process(cats);
         initCatLinkSortables();
         applyLayout();
         editDialog.close();

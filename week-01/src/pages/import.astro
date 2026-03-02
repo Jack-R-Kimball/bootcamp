@@ -351,7 +351,8 @@ const panelData = panels.map(p => ({
       return topDl ? parseDl(topDl) : [];
     }
 
-    function parseDl(dl) {
+    function parseDl(dl, depth = 0) {
+      if (depth > 30) return [];
       const items = [];
       for (const dt of dl.querySelectorAll(':scope > dt')) {
         const a   = dt.querySelector(':scope > a');
@@ -367,7 +368,7 @@ const panelData = panels.map(p => ({
           items.push({ type: 'link', name: a.textContent.trim() || href, url: href, description: dd, tags, keyword });
         } else if (h3) {
           const subDl    = dt.querySelector(':scope > dl');
-          const children = subDl ? parseDl(subDl) : [];
+          const children = subDl ? parseDl(subDl, depth + 1) : [];
           if (children.length) items.push({ type: 'folder', name: h3.textContent.trim(), children });
         }
       }
@@ -506,6 +507,11 @@ const panelData = panels.map(p => ({
         .map(el => ({ name: el.dataset.name, url: el.dataset.url, description: el.dataset.description, tags: el.dataset.tags || '', keyword: el.dataset.keyword || '' }));
     }
 
+    // ── Panel / category dropdowns ─────────────────────────────────────────────
+
+    const panelSelect = document.getElementById('panel-select');
+    const catSelect   = document.getElementById('cat-select');
+
     function updateCount() {
       const n = getSelectedLinks().length;
       document.getElementById('tally').textContent = `${n} selected`;
@@ -513,11 +519,6 @@ const panelData = panels.map(p => ({
         `<strong>${n}</strong> bookmark${n !== 1 ? 's' : ''} selected`;
       document.getElementById('import-btn').disabled = n === 0 || !catSelect.value;
     }
-
-    // ── Panel / category dropdowns ─────────────────────────────────────────────
-
-    const panelSelect = document.getElementById('panel-select');
-    const catSelect   = document.getElementById('cat-select');
 
     panelData.forEach(p => {
       const opt = document.createElement('option');
