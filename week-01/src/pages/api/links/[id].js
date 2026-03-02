@@ -12,11 +12,13 @@ export async function PUT({ request, params }) {
   if (!name || !url) return new Response('Missing fields', { status: 400 });
 
   const description = data.get('description')?.trim() || null;
+  const tags        = data.get('tags')?.trim()        || null;
+  const keyword     = data.get('keyword')?.trim()     || null;
   // Prefer the panel_id sent by the form; fall back to a DB lookup.
   // > 0 guard: panel IDs are always ≥ 1 (autoincrement), so 0 / NaN must fall back.
   const rawPanelId = Number(data.get('panel_id'));
   const panelId = rawPanelId > 0 ? rawPanelId : getPanelIdForLink(linkId);
-  updateLink(linkId, name, url, description);
+  updateLink(linkId, name, url, description, tags, keyword);
   return html(getCategories(panelId), panelId);
 }
 

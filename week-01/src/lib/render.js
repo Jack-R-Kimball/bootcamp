@@ -8,14 +8,18 @@ function esc(v) {
 }
 
 function renderLink(link, panelId) {
+  const metaParts = [];
+  if (link.keyword) metaParts.push(`(${esc(link.keyword)})`);
+  if (link.tags) metaParts.push(esc(link.tags));
+  const metaStr = metaParts.join(' ');
   return `
-    <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ menu: false }" @click.outside="menu = false">
+    <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ menu: false }" @click.outside="menu = false" @mouseleave="menu = false">
       <div class="link-row" @contextmenu.prevent="menu = !menu">
         <span class="drag-handle link-drag-handle" title="Drag to reorder">⠿</span>
         <div class="link-info">
           <a href="${esc(link.url)}" class="link-name" target="_blank" rel="noopener noreferrer">${esc(link.name)}</a>
-          <span class="link-url">${esc(link.url)}</span>
           ${link.description ? `<span class="link-desc">${esc(link.description)}</span>` : ''}
+          ${metaStr ? `<span class="link-meta">${metaStr}</span>` : ''}
         </div>
         <span class="link-actions" x-show="menu" x-cloak @mouseleave="menu = false" @click="menu = false">
           <button class="btn-action btn-edit"
@@ -23,6 +27,8 @@ function renderLink(link, panelId) {
             data-name="${esc(link.name)}"
             data-url="${esc(link.url)}"
             data-description="${esc(link.description ?? '')}"
+            data-tags="${esc(link.tags ?? '')}"
+            data-keyword="${esc(link.keyword ?? '')}"
             data-panel-id="${panelId}">edit</button>
           <button class="btn-action del"
             hx-delete="/api/links/${link.id}?panel_id=${panelId}"

@@ -118,8 +118,8 @@ export function getPanelIdForLink(linkId) {
 export const createLink = (category_id, name, url, description = null, tags = null, keyword = null) =>
   db.prepare('INSERT INTO links (category_id, name, url, description, tags, keyword) VALUES (?, ?, ?, ?, ?, ?)').run(category_id, name, url, description, tags, keyword);
 
-export const updateLink = (id, name, url, description = null) =>
-  db.prepare('UPDATE links SET name = ?, url = ?, description = ? WHERE id = ?').run(name, url, description, id);
+export const updateLink = (id, name, url, description = null, tags = null, keyword = null) =>
+  db.prepare('UPDATE links SET name = ?, url = ?, description = ?, tags = ?, keyword = ? WHERE id = ?').run(name, url, description, tags, keyword, id);
 
 export const deleteLink = (id) =>
   db.prepare('DELETE FROM links WHERE id = ?').run(id);

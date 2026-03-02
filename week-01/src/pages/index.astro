@@ -425,8 +425,8 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     /* .link-focused is set by JS so layout-shift skipping is prevented */
     .link-item.link-focused {
       z-index: 5;
-      background: color-mix(in srgb, var(--surface2) 85%, var(--link) 15%);
-      box-shadow: 0 3px 14px rgba(0,0,0,0.55), 0 0 0 1px color-mix(in srgb, var(--border) 40%, var(--link) 60%);
+      background: color-mix(in srgb, var(--surface2) 88%, var(--accent) 12%);
+      box-shadow: inset 3px 0 0 var(--accent), 0 3px 14px rgba(0,0,0,0.55);
     }
     .link-row {
       display: flex;
@@ -466,16 +466,14 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       line-height: 1.3;
     }
     .link-item.link-focused .link-desc { display: block; }
-    /* URL shown only on focused item (inside .link-row, so hidden when editing) */
-    .link-url {
+    .link-meta {
       display: none;
       font-size: 0.625rem;
-      color: var(--muted);
-      opacity: 0.6;
-      word-break: break-all;
+      color: var(--accent);
+      opacity: 0.75;
       line-height: 1.3;
     }
-    .link-item.link-focused .link-url { display: block; }
+    .link-item.link-focused .link-meta { display: block; }
     .link-actions {
       position: absolute;
       right: 0.5rem;
@@ -536,7 +534,8 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     }
     #edit-dialog .field { margin-bottom: 0.75rem; }
     #edit-dialog textarea,
-    #edit-dialog input[type="url"] {
+    #edit-dialog input[type="url"],
+    #edit-dialog input[type="text"] {
       width: 100%;
       background: var(--bg);
       color: var(--text);
@@ -549,7 +548,8 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     }
     #edit-dialog textarea { resize: vertical; }
     #edit-dialog textarea:focus,
-    #edit-dialog input[type="url"]:focus { outline: none; border-color: var(--accent); }
+    #edit-dialog input[type="url"]:focus,
+    #edit-dialog input[type="text"]:focus { outline: none; border-color: var(--accent); }
     @media (max-width: 640px) { #edit-dialog { width: 92vw; } }
 
     /* ── Category kebab menu ────────────────────────────── */
@@ -617,8 +617,8 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     .links-list { min-height: 1.5rem; }
 
     /* ── Compact fallback clone during drag ─────────────── */
-    .link-item.sortable-fallback .link-url,
     .link-item.sortable-fallback .link-desc,
+    .link-item.sortable-fallback .link-meta,
     .link-item.sortable-fallback .link-actions,
     .link-item.sortable-fallback .link-drag-handle { display: none !important; }
     .link-item.sortable-fallback .link-name {
@@ -779,16 +779,24 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     <h3>Edit link</h3>
     <form id="edit-form">
       <div class="field">
-        <label for="edit-name">Name</label>
-        <textarea id="edit-name" name="name" rows="2" required></textarea>
-      </div>
-      <div class="field">
         <label for="edit-url">URL</label>
         <input type="url" id="edit-url" name="url" required>
       </div>
       <div class="field">
+        <label for="edit-name">Name</label>
+        <textarea id="edit-name" name="name" rows="2" required></textarea>
+      </div>
+      <div class="field">
         <label for="edit-desc">Description</label>
         <textarea id="edit-desc" name="description" rows="3" placeholder="optional"></textarea>
+      </div>
+      <div class="field">
+        <label for="edit-keyword">Keyword</label>
+        <input type="text" id="edit-keyword" name="keyword" placeholder="optional">
+      </div>
+      <div class="field">
+        <label for="edit-tags">Tags</label>
+        <input type="text" id="edit-tags" name="tags" placeholder="tag1, tag2, tag3 (optional)">
       </div>
       <div class="form-actions">
         <button type="submit" class="btn-primary">save</button>
@@ -1155,25 +1163,31 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
     function openEditDialog(btn) {
       _editLinkId  = Number(btn.dataset.linkId);
       _editPanelId = Number(btn.dataset.panelId);
-      document.getElementById('edit-name').value = btn.dataset.name;
-      document.getElementById('edit-url').value  = btn.dataset.url;
-      document.getElementById('edit-desc').value = btn.dataset.description || '';
+      document.getElementById('edit-url').value     = btn.dataset.url;
+      document.getElementById('edit-name').value    = btn.dataset.name;
+      document.getElementById('edit-desc').value    = btn.dataset.description || '';
+      document.getElementById('edit-keyword').value = btn.dataset.keyword || '';
+      document.getElementById('edit-tags').value    = btn.dataset.tags || '';
       editDialog.showModal();
-      setTimeout(() => document.getElementById('edit-name').focus(), 50);
+      setTimeout(() => document.getElementById('edit-url').focus(), 50);
     }
 
-    // Event delegation — works after every HTMX swap
+    // Event delegation — works after every HTMX swap.
+    // requestAnimationFrame defers showModal() until after the click event fully
+    // completes, preventing the modal backdrop from receiving the same click.
     document.addEventListener('click', e => {
       const btn = e.target.closest('.btn-edit');
-      if (btn) openEditDialog(btn);
+      if (btn) requestAnimationFrame(() => openEditDialog(btn));
     });
 
     document.getElementById('edit-form').addEventListener('submit', async e => {
       e.preventDefault();
       const fd = new FormData();
-      fd.set('name',        document.getElementById('edit-name').value.trim());
       fd.set('url',         document.getElementById('edit-url').value.trim());
+      fd.set('name',        document.getElementById('edit-name').value.trim());
       fd.set('description', document.getElementById('edit-desc').value.trim());
+      fd.set('keyword',     document.getElementById('edit-keyword').value.trim());
+      fd.set('tags',        document.getElementById('edit-tags').value.trim());
       fd.set('panel_id',    _editPanelId);
       const resp = await fetch(`/api/links/${_editLinkId}`, { method: 'PUT', body: fd });
       if (resp.ok) {
