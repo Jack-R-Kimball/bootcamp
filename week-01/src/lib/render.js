@@ -34,8 +34,10 @@ function renderLink(link, panelId) {
         <input name="name" value="${esc(link.name)}" required>
         <input name="url" value="${esc(link.url)}" required>
         <input name="description" value="${esc(link.description ?? '')}" placeholder="Description (optional)">
-        <button type="submit" class="btn-primary">save</button>
-        <button type="button" class="btn-ghost" @click="editing = false; menu = false">cancel</button>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">save</button>
+          <button type="button" class="btn-ghost" @mousedown="editing = false; menu = false">cancel</button>
+        </div>
       </form>
     </div>`;
 }
@@ -45,8 +47,7 @@ function renderCategory(cat, panelId) {
     <div class="category" id="cat-${cat.id}" data-id="${cat.id}"
          x-data="{ renaming: false, menu: false, addingLink: false, collapsed: false, _mobile: false }"
          x-init="collapsed = _mobile = window.matchMedia('(hover: none)').matches"
-         :class="{ 'cat-menu-open': menu }"
-         @click.outside="menu = false">
+         :class="{ 'cat-menu-open': menu }">
       <div class="category-header"
            @click="if (_mobile && !renaming) { menu = false; collapsed = !collapsed; if (collapsed) addingLink = false; }">
         <span class="drag-handle cat-drag-handle" title="Drag to reorder">⠿</span>
@@ -61,7 +62,7 @@ function renderCategory(cat, panelId) {
           <button type="submit" class="btn-primary">save</button>
           <button type="button" class="btn-ghost" @click="renaming = false">cancel</button>
         </form>
-        <div class="cat-menu" x-show="!renaming">
+        <div class="cat-menu" x-show="!renaming" @click.outside="menu = false">
           <span class="cat-chevron" x-text="collapsed ? '▸' : '▾'"></span>
           <button class="cat-menu-btn" @click.stop="menu = !menu" title="Category options">⋮</button>
           <div class="cat-dropdown" x-show="menu" x-cloak>
@@ -92,8 +93,10 @@ function renderCategory(cat, panelId) {
           <input name="name" placeholder="Name" required x-ref="linkInput">
           <input name="url" placeholder="https://" required>
           <input name="description" placeholder="Description (optional)">
-          <button type="submit" class="btn-primary">+ link</button>
-          <button type="button" class="btn-ghost" @click="addingLink = false">cancel</button>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">save</button>
+            <button type="button" class="btn-ghost" @click="addingLink = false">cancel</button>
+          </div>
         </form>
       </div>
     </div>`;
@@ -149,9 +152,9 @@ function renderPanelTab(panel, totalPanels) {
 
 function renderPanelBar(panels, activePanelId) {
   return `
-    <div class="panel-bar" x-data="{ active: ${activePanelId || 0}, gearOpen: false, addingCat: false, addingPanel: false }" @click.outside="gearOpen = false">
+    <div class="panel-bar" x-data="{ active: ${activePanelId || 0}, gearOpen: false, addingCat: false, addingPanel: false }">
       <input type="hidden" id="active-panel" name="panel_id" :value="active">
-      <div class="panel-gear">
+      <div class="panel-gear" @click.outside="gearOpen = false">
         <button class="gear-btn" @click.stop="gearOpen = !gearOpen" :class="{ active: gearOpen }" title="Add category or panel">⚙</button>
         <div class="gear-dropdown" x-show="gearOpen" x-cloak>
           <div x-show="!addingCat && !addingPanel">
@@ -165,8 +168,10 @@ function renderPanelBar(panels, activePanelId) {
             hx-include="#active-panel"
             @submit="addingCat = false; gearOpen = false">
             <input x-ref="catName" name="name" placeholder="category name" required>
-            <button type="submit" class="btn-primary">create</button>
-            <button type="button" class="btn-ghost" @click="addingCat = false">cancel</button>
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">create</button>
+              <button type="button" class="btn-ghost" @click="addingCat = false">cancel</button>
+            </div>
           </form>
           <form x-show="addingPanel" x-cloak class="inline-form gear-form"
             hx-post="/api/panels"
@@ -174,8 +179,10 @@ function renderPanelBar(panels, activePanelId) {
             hx-swap="innerHTML"
             @submit="addingPanel = false; gearOpen = false">
             <input x-ref="panelName" name="name" placeholder="panel name" required>
-            <button type="submit" class="btn-primary">create</button>
-            <button type="button" class="btn-ghost" @click="addingPanel = false">cancel</button>
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">create</button>
+              <button type="button" class="btn-ghost" @click="addingPanel = false">cancel</button>
+            </div>
           </form>
         </div>
       </div>
@@ -185,24 +192,10 @@ function renderPanelBar(panels, activePanelId) {
     </div>`;
 }
 
-function renderSelectionBar() {
-  return `
-    <div id="selection-bar" class="selection-bar" hidden>
-      <span id="sel-count" class="sel-count"></span>
-      <span class="sel-sep">selected · Move to:</span>
-      <select id="sel-panel-dd"></select>
-      <select id="sel-cat-dd"></select>
-      <button id="sel-move"  class="btn-primary">move</button>
-      <button id="sel-clear" class="btn-ghost">✕</button>
-    </div>`;
-}
-
 export function renderMain(panels, activePanelId, categories) {
   return `
     ${renderPanelBar(panels, activePanelId)}
-    ${renderSelectionBar()}
     <div id="categories">
       ${renderCategories(categories, activePanelId)}
-    </div>
-    <div id="drag-preview" hidden aria-hidden="true"></div>`;
+    </div>`;
 }

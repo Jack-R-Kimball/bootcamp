@@ -144,102 +144,17 @@ export function searchLinks(query, panelId = null, caseSensitive = false) {
   return db.prepare(sql).all(...params);
 }
 
-// ── Bulk link move (inserts at top of target category, repacks positions) ─────
-// After moving, all positions in the category are clean sequential integers.
-export function bulkMoveLinks(ids, categoryId) {
-  db.transaction(() => {
-    const ph = ids.map(() => '?').join(',');
-    // Remaining links in the category (not being moved), in their current order
-    const remaining = db.prepare(
-      `SELECT id FROM links WHERE category_id = ? AND id NOT IN (${ph}) ORDER BY position, id`
-    ).all(categoryId, ...ids);
-    const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
-    // Moved links occupy positions 0..n-1 (top of list)
-    ids.forEach((id, i) => stmt.run(categoryId, i, id));
-    // Remaining links follow at n, n+1, ...
-    remaining.forEach((l, i) => stmt.run(categoryId, ids.length + i, l.id));
-  })();
-}
-
-// ── Move category to a different panel ────────────────────────────────────────
-export function moveCategoryToPanel(catId, panelId) {
-  db.prepare('UPDATE categories SET panel_id = ? WHERE id = ?').run(panelId, catId);
-}
-
-// ── Cross-panel link move (single link) ───────────────────────────────────────
-// Finds or creates a "Default" category in the target panel, inserts link at
-// top, and repacks all positions in that category.
-export function moveLinkToPanel(linkId, panelId) {
-  return db.transaction(() => {
-    let cat = db.prepare(
-      `SELECT id FROM categories WHERE panel_id = ? AND name = 'Default' ORDER BY position, id LIMIT 1`
-    ).get(panelId);
-    if (!cat) {
-      cat = db.prepare(
-        'SELECT id FROM categories WHERE panel_id = ? ORDER BY position, id LIMIT 1'
-      ).get(panelId);
-    }
-    if (!cat) {
-      const { maxPos } = db.prepare(
-        'SELECT COALESCE(MAX(position), -1) AS maxPos FROM categories WHERE panel_id = ?'
-      ).get(panelId);
-      const r = db.prepare('INSERT INTO categories (name, panel_id, position) VALUES (?, ?, ?)').run('Default', panelId, maxPos + 1);
-      cat = { id: r.lastInsertRowid };
-    }
-    // Remaining links in target category, excluding the one being moved
-    const remaining = db.prepare(
-      'SELECT id FROM links WHERE category_id = ? AND id != ? ORDER BY position, id'
-    ).all(cat.id, linkId);
-    db.prepare('UPDATE links SET category_id = ?, position = 0 WHERE id = ?').run(cat.id, linkId);
-    const stmt = db.prepare('UPDATE links SET position = ? WHERE id = ?');
-    remaining.forEach((l, i) => stmt.run(i + 1, l.id));
-    return cat.id;
-  })();
-}
-
-// ── Cross-panel bulk move (multiple links → target panel) ─────────────────────
-// Atomically finds/creates the Default category, moves all links there, and
-// repacks positions. Replaces N parallel move-to-panel calls, eliminating
-// the race condition that could create duplicate "Default" categories.
-export function bulkMoveLinksToPanel(ids, panelId) {
-  return db.transaction(() => {
-    let cat = db.prepare(
-      `SELECT id FROM categories WHERE panel_id = ? AND name = 'Default' ORDER BY position, id LIMIT 1`
-    ).get(panelId);
-    if (!cat) {
-      cat = db.prepare(
-        'SELECT id FROM categories WHERE panel_id = ? ORDER BY position, id LIMIT 1'
-      ).get(panelId);
-    }
-    if (!cat) {
-      const { maxPos } = db.prepare(
-        'SELECT COALESCE(MAX(position), -1) AS maxPos FROM categories WHERE panel_id = ?'
-      ).get(panelId);
-      const r = db.prepare('INSERT INTO categories (name, panel_id, position) VALUES (?, ?, ?)').run('Default', panelId, maxPos + 1);
-      cat = { id: r.lastInsertRowid };
-    }
-    const ph = ids.map(() => '?').join(',');
-    const remaining = db.prepare(
-      `SELECT id FROM links WHERE category_id = ? AND id NOT IN (${ph}) ORDER BY position, id`
-    ).all(cat.id, ...ids);
-    const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
-    ids.forEach((id, i) => stmt.run(cat.id, i, id));
-    remaining.forEach((l, i) => stmt.run(cat.id, ids.length + i, l.id));
-    return cat.id;
-  })();
-}
-
 // ── Reordering ────────────────────────────────────────────────────────────────
 export function reorderCategories(ids) {
   const stmt = db.prepare('UPDATE categories SET position = ? WHERE id = ?');
   db.transaction(() => ids.forEach((id, i) => stmt.run(i, id)))();
 }
 
-// Reorder links within a category. Only updates position; category_id is
-// validated via the WHERE clause so stray IDs are silently ignored.
+// Reorder links — sets both category_id and position for each id.
+// Handles same-category reorder and cross-category drag in one pass.
 export function reorderLinks(ids, categoryId) {
-  const stmt = db.prepare('UPDATE links SET position = ? WHERE id = ? AND category_id = ?');
-  db.transaction(() => ids.forEach((id, i) => stmt.run(i, id, categoryId)))();
+  const stmt = db.prepare('UPDATE links SET category_id = ?, position = ? WHERE id = ?');
+  db.transaction(() => ids.forEach((id, i) => stmt.run(categoryId, i, id)))();
 }
 
 // ── Find-or-create helpers (used by smart import) ─────────────────────────────
