@@ -104,6 +104,28 @@ function renderCategory(cat, panelId) {
     </div>`;
 }
 
+// ── Tag browser ───────────────────────────────────────────────────────────────
+
+export function renderTagBrowser(tags) {
+  if (!tags.length) {
+    return '<p class="empty">No tags found.</p>';
+  }
+  const sections = tags.map(({ tag, links }) => `
+    <details class="tag-section">
+      <summary class="tag-header">
+        <span class="tag-chevron"></span>
+        <span class="tag-name">${esc(tag)}</span>
+        <span class="tag-count">${links.length}</span>
+      </summary>
+      <div class="links-list">
+        ${links.map(renderSearchLink).join('')}
+      </div>
+    </details>`).join('');
+  return `<div class="tags-wrapper">${sections}</div>`;
+}
+
+// ── Search results ─────────────────────────────────────────────────────────────
+
 // Render a single search-result link item (no drag handle, no edit/delete).
 function renderSearchLink(r) {
   const metaParts = [];

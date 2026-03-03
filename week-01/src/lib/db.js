@@ -124,6 +124,36 @@ export const updateLink = (id, name, url, description = null, tags = null, keywo
 export const deleteLink = (id) =>
   db.prepare('DELETE FROM links WHERE id = ?').run(id);
 
+// ── Tag browser ───────────────────────────────────────────────────────────────
+// Returns [{tag, links:[...]}] sorted alphabetically.
+// Tags are stored as comma-separated strings; splitting happens in JS.
+export function getTagsWithLinks() {
+  const links = db.prepare(`
+    SELECT l.id, l.name, l.url, l.description, l.keyword, l.tags,
+           c.id as cat_id, c.name as cat_name,
+           p.id as panel_id, p.name as panel_name
+    FROM links l
+    JOIN categories c ON c.id = l.category_id
+    JOIN panels p ON p.id = c.panel_id
+    WHERE l.tags IS NOT NULL AND trim(l.tags) != ''
+    ORDER BY p.position, p.id, c.position, c.id, l.position, l.id
+  `).all();
+
+  const tagMap = new Map();
+  for (const link of links) {
+    for (const raw of link.tags.split(',')) {
+      const tag = raw.trim();
+      if (!tag) continue;
+      if (!tagMap.has(tag)) tagMap.set(tag, []);
+      tagMap.get(tag).push(link);
+    }
+  }
+
+  return [...tagMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    .map(([tag, links]) => ({ tag, links }));
+}
+
 // ── Search ────────────────────────────────────────────────────────────────────
 export function searchLinks(query, panelId = null, caseSensitive = false) {
   const term = caseSensitive ? query : query.toLowerCase();

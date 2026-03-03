@@ -781,6 +781,57 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       .inline-form button { align-self: flex-start; }
     }
 
+    /* ── Tag browser ─────────────────────────────────────────────────────── */
+    .tags-wrapper { column-span: all; }
+    .tag-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      margin-bottom: 0.5rem;
+      position: relative;
+    }
+    .tag-header {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface2);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--r);
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    .tag-section[open] > .tag-header {
+      border-bottom: 1px solid var(--border);
+      border-radius: var(--r) var(--r) 0 0;
+    }
+    .tag-header::-webkit-details-marker { display: none; }
+    .tag-header::marker { display: none; }
+    .tag-chevron { font-size: 0.55rem; color: var(--muted); flex-shrink: 0; }
+    .tag-chevron::before { content: '▸'; }
+    .tag-section[open] .tag-chevron::before { content: '▾'; }
+    .tag-name {
+      flex: 1;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .tag-count {
+      font-size: 0.6rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 0.1rem 0.5rem;
+      line-height: 1.4;
+      flex-shrink: 0;
+    }
+    .tag-section > .links-list { padding: 0.25rem 0; }
+
     /* ── Tooltip ─────────────────────────────────────────────────────────── */
     [data-tooltip] { position: relative; }
     [data-tooltip]:hover::after {
@@ -841,6 +892,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
         <div x-show="open" x-cloak class="header-dropdown">
           <a href={bookmarklet} class="menu-item" title="Drag this link to your toolbar to install a bookmarklet that directly saves pages to the dashboard." @click.prevent>Install bookmarklet</a>
           <a href="/import" class="menu-item">import</a>
+          <button class="menu-item" id="tags-btn">browse tags</button>
           <div class="menu-divider"></div>
           <button class="menu-item" id="layout-toggle">compact layout</button>
           <div class="menu-divider"></div>
@@ -1451,6 +1503,22 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       localStorage.setItem('dashLayout', compact ? 'grid' : 'compact');
       applyLayout();
     }
+
+    // ── Tag browser ───────────────────────────────────────────────────────────
+    document.getElementById('tags-btn')?.addEventListener('click', async () => {
+      // Close hamburger menu
+      const menuEl = document.querySelector('.header-menu');
+      const menuData = menuEl ? window.Alpine?.$data(menuEl) : null;
+      if (menuData) menuData.open = false;
+      resetSearchState();
+      const catsEl = document.getElementById('categories');
+      if (!catsEl) return;
+      catsEl.innerHTML = '<p class="empty">Loading\u2026</p>';
+      try {
+        const r = await fetch('/api/tags');
+        if (r.ok) { catsEl.innerHTML = await r.text(); tagLastColCategories(); }
+      } catch (e) { /* ignore */ }
+    });
 
     document.getElementById('layout-toggle')?.addEventListener('click', toggleLayout);
     applyLayout();
