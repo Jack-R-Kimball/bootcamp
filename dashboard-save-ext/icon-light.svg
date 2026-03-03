@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- light icon — shown on dark toolbars -->
+  <polygon points="9,2 23,2 23,30 16,23 9,30" fill="#58a6ff"/>
+  <line x1="16" y1="9" x2="16" y2="19" stroke="#0d1117" stroke-width="3.5" stroke-linecap="round"/>
+  <line x1="11" y1="14" x2="21" y2="14" stroke="#0d1117" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

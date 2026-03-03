@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .bg { fill: #161b22; }
+    .bm { fill: #58a6ff; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #e6edf3; }
+      .bm { fill: #0969da; }
+    }
+  </style>
+  <circle cx="16" cy="16" r="16" class="bg"/>
+  <!-- bookmark ribbon shape -->
+  <polygon points="9,5 23,5 23,27 16,21 9,27" class="bm"/>
+  <!-- plus sign -->
+  <line x1="16" y1="10" x2="16" y2="18" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="12" y1="14" x2="20" y2="14" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
