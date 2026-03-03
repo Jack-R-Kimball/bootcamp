@@ -149,7 +149,7 @@ for (const p of panelsData) {
           <input id="name-input" name="name" required>
         </div>
         <div class="field">
-          <label>Description</label>
+          <label>Description <span id="desc-spinner" style="font-size:0.55rem;color:var(--muted);font-style:italic"></span></label>
           <textarea id="desc-input" name="description" placeholder="optional"></textarea>
         </div>
         <div class="row">
@@ -222,6 +222,38 @@ for (const p of panelsData) {
     // Auto-focus title; select all so user can immediately retype if needed
     nameInput.focus();
     nameInput.select();
+
+    // Fetch suggestions in background — pre-fill fields without blocking the user
+    const descInput    = document.getElementById('desc-input');
+    const tagsInput    = document.getElementById('tags-input');
+    const descSpinner  = document.getElementById('desc-spinner');
+    let suggestDone    = false;
+
+    if (rawUrl) {
+      descSpinner.textContent = 'fetching…';
+      fetch(`/api/suggest?url=${encodeURIComponent(rawUrl)}&name=${encodeURIComponent(rawName)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          suggestDone = true;
+          descSpinner.textContent = '';
+          if (!data) return;
+
+          // Only pre-fill if user hasn't already typed something
+          if (data.description && !descInput.value.trim()) {
+            descInput.value = data.description;
+          }
+          if (data.tags && !tagsInput.value.trim()) {
+            tagsInput.value = data.tags;
+          }
+          // Only update panel/category if user hasn't changed them
+          if (data.panel_id && Number(panelSel.value) === defPanel) {
+            panelSel.value = data.panel_id;
+            updateCats(Number(data.panel_id));
+            if (data.category_id) catSel.value = data.category_id;
+          }
+        })
+        .catch(() => { descSpinner.textContent = ''; });
+    }
 
     panelSel.addEventListener('change', () => updateCats(Number(panelSel.value)));
 

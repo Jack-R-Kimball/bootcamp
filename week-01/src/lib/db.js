@@ -232,6 +232,36 @@ export function bulkMoveLinks(ids, categoryId) {
   db.transaction(() => ids.forEach(id => stmt.run(categoryId, id)))();
 }
 
+// ── Suggest helpers (used by /api/suggest) ────────────────────────────────────
+
+// Domain-based panel/category suggestion + full tag list.
+export function getSuggestData(url) {
+  let panelId = null, categoryId = null;
+  try {
+    const domain = new URL(url).hostname.replace(/^www\./, '');
+    const match  = db.prepare(`
+      SELECT c.panel_id, l.category_id, COUNT(*) as n
+      FROM links l
+      JOIN categories c ON c.id = l.category_id
+      WHERE lower(l.url) LIKE ?
+      GROUP BY c.panel_id, l.category_id
+      ORDER BY n DESC
+      LIMIT 1
+    `).get(`%${domain}%`);
+    if (match) { panelId = match.panel_id; categoryId = match.category_id; }
+  } catch { /* invalid URL */ }
+
+  const tagRows = db.prepare(
+    `SELECT DISTINCT tags FROM links WHERE tags IS NOT NULL AND trim(tags) != ''`
+  ).all();
+  const allTags = new Set();
+  for (const { tags } of tagRows) {
+    for (const t of tags.split(',')) { const tag = t.trim(); if (tag) allTags.add(tag); }
+  }
+
+  return { panelId, categoryId, allTags: [...allTags] };
+}
+
 // ── Find-or-create helpers (used by smart import) ─────────────────────────────
 export function findOrCreatePanel(name) {
   const existing = db.prepare('SELECT id FROM panels WHERE name = ?').get(name);
