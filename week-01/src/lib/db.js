@@ -126,11 +126,19 @@ export const deleteLink = (id) =>
   db.prepare('DELETE FROM links WHERE id = ?').run(id);
 
 // Returns links that haven't been checked yet (status IS NULL).
-// Ordered so LAN URLs come last (they're instant — blue, no fetch).
 export function getLinksNeedingFetch() {
   return db.prepare(`
     SELECT id, name, url, description FROM links
     WHERE status IS NULL
+    ORDER BY id
+  `).all();
+}
+
+// Returns yellow links for re-check with improved extraction.
+export function getYellowLinks() {
+  return db.prepare(`
+    SELECT id, name, url, description FROM links
+    WHERE status = 'yellow'
     ORDER BY id
   `).all();
 }
