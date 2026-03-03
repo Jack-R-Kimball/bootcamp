@@ -12,8 +12,9 @@ function renderLink(link, panelId) {
   if (link.keyword) metaParts.push(`(${esc(link.keyword)})`);
   if (link.tags) metaParts.push(esc(link.tags));
   const metaStr = metaParts.join(' ');
+  const statusAttr = link.status ? ` data-status="${esc(link.status)}"` : '';
   return `
-    <div class="link-item" id="link-${link.id}" data-id="${link.id}" x-data="{ menu: false }" @click.outside="menu = false" @mouseleave="menu = false">
+    <div class="link-item" id="link-${link.id}" data-id="${link.id}"${statusAttr} x-data="{ menu: false }" @click.outside="menu = false" @mouseleave="menu = false">
       <div class="link-row" @contextmenu.prevent="menu = !menu">
         <span class="drag-handle link-drag-handle" title="Drag to reorder">⠿</span>
         <div class="link-info">

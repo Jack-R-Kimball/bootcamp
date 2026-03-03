@@ -49,6 +49,7 @@ migrate(`ALTER TABLE links ADD COLUMN position INTEGER DEFAULT 0`);
 migrate(`ALTER TABLE links ADD COLUMN description TEXT`);
 migrate(`ALTER TABLE links ADD COLUMN tags TEXT`);
 migrate(`ALTER TABLE links ADD COLUMN keyword TEXT`);
+migrate(`ALTER TABLE links ADD COLUMN status TEXT`);
 
 // ── Seed default panel if none exists ─────────────────────────────────────────
 const seedDefault = db.transaction(() => {
@@ -123,6 +124,24 @@ export const updateLink = (id, name, url, description = null, tags = null, keywo
 
 export const deleteLink = (id) =>
   db.prepare('DELETE FROM links WHERE id = ?').run(id);
+
+// Returns links that haven't been checked yet (status IS NULL).
+// Ordered so LAN URLs come last (they're instant — blue, no fetch).
+export function getLinksNeedingFetch() {
+  return db.prepare(`
+    SELECT id, name, url, description FROM links
+    WHERE status IS NULL
+    ORDER BY id
+  `).all();
+}
+
+export function updateLinkStatus(id, status, newDescription = null) {
+  if (newDescription !== null) {
+    db.prepare('UPDATE links SET status = ?, description = ? WHERE id = ?').run(status, newDescription, id);
+  } else {
+    db.prepare('UPDATE links SET status = ? WHERE id = ?').run(status, id);
+  }
+}
 
 // ── Tag browser ───────────────────────────────────────────────────────────────
 // Returns [{tag, links:[...]}] sorted alphabetically.
