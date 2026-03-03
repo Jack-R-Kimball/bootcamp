@@ -6,12 +6,6 @@ const panels = getPanels();
 const activePanel = panels[0];
 const categories = activePanel ? getCategories(activePanel.id) : [];
 
-const rawHost  = Astro.request.headers.get('host') ?? 'localhost:4321';
-const rawProto = Astro.request.headers.get('x-forwarded-proto') ?? 'http';
-const proto  = /^https?$/.test(rawProto) ? rawProto : 'http';
-const host   = /^[a-zA-Z0-9._:[\]-]+$/.test(rawHost) ? rawHost : 'localhost:4321';
-const origin = `${proto}://${host}`;
-const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+encodeURIComponent(location.href)+'&name='+encodeURIComponent(document.title),'_blank','width=480,height=365,popup=yes');})();`;
 ---
 
 <!DOCTYPE html>
@@ -930,7 +924,7 @@ const bookmarklet = `javascript:(function(){window.open('${origin}/save?url='+en
       <div x-data="{ open: false }" class="header-menu" @click.outside="open = false">
         <button @click="open = !open" class="hamburger-btn" :class="{ active: open }" aria-label="Menu">&#9776;</button>
         <div x-show="open" x-cloak class="header-dropdown">
-          <a href={bookmarklet} class="menu-item" title="Drag this link to your toolbar to install a bookmarklet that directly saves pages to the dashboard." @click.prevent>Install bookmarklet</a>
+          <a href="/dashboard-save.xpi" class="menu-item">install extension</a>
           <a href="/import" class="menu-item">import</a>
           <button class="menu-item" id="tags-btn">browse tags</button>
           <button class="menu-item" id="fetch-desc-btn">fetch descriptions</button>
