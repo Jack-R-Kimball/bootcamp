@@ -765,6 +765,10 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       .link-detail-title, .link-detail-url { display: none; }
       .cat-chevron { display: inline; }
       .category-header { cursor: pointer; user-select: none; }
+      /* Dots conflict with the grab handle on mobile and can't be reliably
+         positioned when the inline detail section varies item height.
+         Hide them; status can be surfaced differently if needed later. */
+      .link-item[data-status]::after { display: none; }
     }
 
     /* ── Small screen layout ────────────────────────────────────────────── */
