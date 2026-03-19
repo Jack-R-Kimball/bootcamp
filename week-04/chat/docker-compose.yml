@@ -1,0 +1,11 @@
+services:
+  chat:
+    build: .
+    ports:
+      - "4323:4323"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=4323
+      - DB_PATH=/app/data/chat.db
+    restart: unless-stopped
