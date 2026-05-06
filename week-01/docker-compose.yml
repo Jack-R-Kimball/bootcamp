@@ -1,6 +1,6 @@
 services:
   dashboard:
-    image: ghcr.io/jack-r-kimball/link-dashboard:latest
+    image: ghcr.io/jack-r-kimball/alt-bookmarks:latest
     # build: .   # uncomment to build locally instead of pulling
     network_mode: host
     volumes:

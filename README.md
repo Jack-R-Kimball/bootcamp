@@ -1,6 +1,6 @@
-# Personal Link Dashboard
+# Alt Bookmarks
 
-A self-hosted personal link dashboard built with Astro SSR, HTMX, Alpine.js, and SQLite — sometimes called the "AHA stack." Organizes bookmarks into panels and categories with drag-and-drop, full-text search, tag browsing, and automatic description fetching.
+A self-hosted personal bookmark manager built with Astro SSR, HTMX, Alpine.js, and SQLite — sometimes called the "AHA stack." Organizes bookmarks into panels and categories with drag-and-drop, full-text search, tag browsing, and automatic description fetching.
 
 Runs as a Docker/Podman container. A companion Firefox extension saves pages directly from the browser toolbar.
 

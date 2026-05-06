@@ -1,4 +1,4 @@
-# Link Dashboard
+# Alt Bookmarks
 
 A self-hosted personal bookmark dashboard. Organize links into panels and categories, drag to reorder, import from any browser, and save pages with a one-click bookmarklet.
 
@@ -42,7 +42,7 @@ If you don't want to clone the repo, just create this file and run one of the co
 ```yaml
 services:
   dashboard:
-    image: ghcr.io/jack-r-kimball/link-dashboard:latest
+    image: ghcr.io/jack-r-kimball/alt-bookmarks:latest
     ports:
       - "4321:4321"
     volumes:
@@ -54,7 +54,7 @@ volumes:
     name: dashboard-data
 ```
 
-Pin to a specific version for stability (e.g. `link-dashboard:1.0`).
+Pin to a specific version for stability (e.g. `alt-bookmarks:1.0`).
 
 ## Data
 
@@ -95,10 +95,10 @@ docker compose up -d
 ```bash
 git clone https://github.com/kharl26/claude-code
 cd claude-code/bootcamp/week-01
-docker build -t link-dashboard .
+docker build -t alt-bookmarks .
 ```
 
-Then in `docker-compose.yml`, replace the `image:` line with `image: link-dashboard`.
+Then in `docker-compose.yml`, replace the `image:` line with `image: alt-bookmarks`.
 
 ## Stack
 

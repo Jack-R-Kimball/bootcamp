@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 source ~/.nvm/nvm.sh
 npm run build
-podman build -t ghcr.io/jack-r-kimball/link-dashboard:latest .
+podman build -t ghcr.io/jack-r-kimball/alt-bookmarks:latest .
 podman-compose down
 podman-compose up -d
 echo "Dashboard updated and running at http://localhost:4321"

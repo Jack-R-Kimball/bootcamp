@@ -8,4 +8,6 @@ __pycache__/
 .venv/
 dist/
 build/
+.astro/
 week-*/data/
+week-02/
