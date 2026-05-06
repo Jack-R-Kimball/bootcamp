@@ -1142,100 +1142,30 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       setTimeout(reloadPanel, 600);
     }
 
-    // ── Link item focus (JS-managed to prevent layout-shift skipping) ─────────
-    // When a focused item collapses, its content (title wrap, URL, description)
-    // vanishes, shifting every item below upward. The next mousemove then finds
-    // a different item 2-3 steps down. Two guards prevent skipping:
-    //   1. After each focus change, lock updates for two animation frames while
-    //      the layout reflows, then re-evaluate at the cursor's current position.
-    //   2. Within the same list, cap movement to one DOM step per evaluation.
     let _focusedLink = null;
-    let _focusLocked = false;
 
     function setFocusedLink(el) {
       if (_focusedLink === el) return;
-
-      const prev = _focusedLink;
-      if (prev) {
-        // Freeze the outgoing item at its current expanded height before
-        // removing the class. This prevents items below from jumping upward
-        // while the cursor is still near them. The CSS min-height transition
-        // then releases the space gradually so the cursor naturally tracks
-        // onto the next item.
-        const h = prev.getBoundingClientRect().height;
-        prev.style.minHeight = h + 'px';
-        prev.classList.remove('link-focused');
-        requestAnimationFrame(() => { if (prev.isConnected) prev.style.minHeight = '0'; });
-        setTimeout(() => { if (prev.isConnected) prev.style.minHeight = ''; }, 280);
-      }
-
+      if (_focusedLink) _focusedLink.classList.remove('link-focused');
       _focusedLink = el;
-      if (el) {
-        el.classList.add('link-focused');
-        // Lock for two frames while the layout transitions settle.
-        // No re-evaluation here — focus advances only on actual mouse movement.
-        // Auto-advancing after the lock is what caused short items to be skipped.
-        _focusLocked = true;
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-          _focusLocked = false;
-        }));
-      } else {
-        _focusLocked = false;
-      }
+      if (el) el.classList.add('link-focused');
     }
 
-    function updateLinkFocus(clientX, clientY) {
-      if (_focusLocked) return;
-
-      const el = document.elementFromPoint(clientX, clientY);
-      const linkItem = el?.closest('.link-item');
-
-      if (linkItem) {
-        if (_focusedLink && linkItem !== _focusedLink) {
-          const curList = _focusedLink.closest('.links-list');
-          const newList = linkItem.closest('.links-list');
-          if (curList && curList === newList) {
-            // Cap to one DOM step — second guard against layout-shift jumps.
-            const items = [...curList.querySelectorAll(':scope > .link-item')];
-            const curIdx = items.indexOf(_focusedLink);
-            const newIdx = items.indexOf(linkItem);
-            if (newIdx > curIdx + 1) { setFocusedLink(items[curIdx + 1]); return; }
-            if (newIdx < curIdx - 1) { setFocusedLink(items[curIdx - 1]); return; }
-          }
-        }
-        setFocusedLink(linkItem);
-        return;
-      }
-
-      // Nothing under cursor — may be in a post-collapse gap. Advance by index.
-      if (_focusedLink) {
-        const rect  = _focusedLink.getBoundingClientRect();
-        const list  = _focusedLink.closest('.links-list');
-        const items = list ? [...list.querySelectorAll(':scope > .link-item')] : [];
-        const idx   = items.indexOf(_focusedLink);
-        if (clientY > rect.bottom) {
-          if (idx < items.length - 1) {
-            setFocusedLink(items[idx + 1]);
-          } else {
-            // Cursor is below the last item — keep it focused while cursor
-            // is still within the category card. This prevents the collapse/
-            // re-expand flicker caused by the item shrinking and pulling
-            // the cursor outside its bounding box.
-            const catEl   = _focusedLink.closest('.category');
-            const catRect = catEl?.getBoundingClientRect();
-            if (!catRect || clientY > catRect.bottom) setFocusedLink(null);
-            // else: stay on last item
-          }
-        } else if (clientY < rect.top && idx > 0) {
-          setFocusedLink(items[idx - 1]);
-        } else {
-          setFocusedLink(null);
-        }
-      }
-    }
-
-    document.addEventListener('mousemove', e => { updateLinkFocus(e.clientX, e.clientY); });
-    document.addEventListener('mouseleave', () => { _focusLocked = false; setFocusedLink(null); });
+    // Right-click on a link title toggles the detail popup. Left-click still
+    // follows the link normally. Click elsewhere or Escape dismisses.
+    document.addEventListener('contextmenu', e => {
+      const linkItem = e.target.closest('.link-name')?.closest('.link-item');
+      if (!linkItem) return;
+      e.preventDefault();
+      setFocusedLink(_focusedLink === linkItem ? null : linkItem);
+    });
+    document.addEventListener('click', e => {
+      if (!_focusedLink) return;
+      if (e.target.closest('.link-item') !== _focusedLink) setFocusedLink(null);
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && _focusedLink) setFocusedLink(null);
+    });
 
     let _panelSortable = null;
     let _catSortable   = null;
