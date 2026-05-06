@@ -493,7 +493,7 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
 
     /* .link-detail is an absolutely-positioned overlay card that appears below the focused link row.
        It never affects document flow, so hovering cannot push other links out of reach.
-       Shifted 2rem right so a strip of entries below remains visible and reachable.
+       Shifted right so a strip of entries below remains visible and reachable.
        .cat-last-col flips the direction for rightmost-column categories. */
     .link-detail { display: none; }
     .link-item.link-focused .link-detail {
@@ -501,8 +501,8 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
       flex-direction: column;
       gap: 0.25rem;
       position: absolute;
-      left: 4rem;
-      right: -4rem;
+      left: 9rem;
+      right: -9rem;
       top: 100%;
       z-index: 20;
       background: color-mix(in srgb, var(--surface2) 90%, var(--accent) 10%);
@@ -513,8 +513,8 @@ const categories = activePanel ? getCategories(activePanel.id) : [];
     }
     /* Rightmost column: flip to shift left instead */
     .cat-last-col .link-item.link-focused .link-detail {
-      left: -4rem;
-      right: 2rem;
+      left: -9rem;
+      right: 7rem;
     }
     .link-detail-title {
       color: var(--link);
